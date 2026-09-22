@@ -1,4 +1,4 @@
 // Tombstone module — sy_im_flutter_sdk is a Dart package (0.3.0+).
 // Real native IM: flutter_openim_sdk.
 group 'com.sy.im.flutter'
-version '0.3.0'
+version '0.4.1'

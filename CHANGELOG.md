@@ -1,9 +1,14 @@
+# Changelog
+
+## 0.4.1
+
+- Align nested tombstone Android/iOS plugin versions with package `0.4.1`.
+- Prefer hyphen GitHub remote `sy-im-flutter-sdk` in docs.
+
 ## 0.4.0
 
 - Align version with Android/iOS IM SDKs.
 - Publish target: github.com/carlcy/sy-im-flutter-sdk
-
-# Changelog
 
 ## 0.3.0 — 2026-09-21
 

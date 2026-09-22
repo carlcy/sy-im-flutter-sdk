@@ -1,6 +1,6 @@
 name: sy_im_flutter_sdk
 description: "SY IM Flutter SDK — Dart OpenIMAdapter over flutter_openim_sdk (no legacy MethodChannel shell)."
-version: 0.4.0
+version: 0.4.1
 homepage: https://github.com/carlcy/sy-im-flutter-sdk
 repository: https://github.com/carlcy/sy-im-flutter-sdk
 
