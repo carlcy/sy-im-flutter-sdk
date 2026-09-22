@@ -1,0 +1,25 @@
+name: sy_im_flutter_sdk
+description: "SY IM Flutter SDK — Dart OpenIMAdapter over flutter_openim_sdk (no legacy MethodChannel shell)."
+version: 0.4.0
+homepage: https://github.com/carlcy/sy-im-flutter-sdk
+repository: https://github.com/carlcy/sy-im-flutter-sdk
+
+environment:
+  sdk: ^3.6.2
+  flutter: '>=3.3.0'
+
+dependencies:
+  http: ^1.2.0
+  flutter:
+    sdk: flutter
+  # Production dependency: pub.dev (not a broken sibling path).
+  # Aligns with OpenIM server v3 on 47.105.48.196.
+  flutter_openim_sdk: 3.8.3+hotfix.15
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+# Pure Dart package: real path is OpenIMAdapter → flutter_openim_sdk.
+# No sy_im_flutter_sdk MethodChannel / native pluginClass.

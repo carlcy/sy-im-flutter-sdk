@@ -1,0 +1,24 @@
+name: sy_im_flutter_sdk_example
+description: Demonstrates sy_im_flutter_sdk with OpenIMAdapter.
+publish_to: "none"
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.6.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  http: ^1.2.0
+  path_provider: ^2.1.5
+  sy_im_flutter_sdk:
+    path: ../
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true

@@ -1,0 +1,14 @@
+.DS_Store
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+**/build/
+.flutter-plugins
+.flutter-plugins-dependencies
+pubspec.yaml.bak.*
+example/.dart_tool/
+example/build/
+*.iml
+.idea/
