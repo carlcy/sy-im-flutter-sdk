@@ -19,9 +19,9 @@
         </trust-anchors>
     </base-config>
 
-    <!-- IP phase: allow HTTPS to 47.105.48.196 with user/debug CA + optional cleartext -->
+    <!-- IP phase: allow HTTPS to syrtcapi.shengyuchenyao.cn with user/debug CA + optional cleartext -->
     <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="true">47.105.48.196</domain>
+        <domain includeSubdomains="true">syrtcapi.shengyuchenyao.cn</domain>
         <domain includeSubdomains="true">10.0.2.2</domain>
         <domain includeSubdomains="true">localhost</domain>
         <trust-anchors>

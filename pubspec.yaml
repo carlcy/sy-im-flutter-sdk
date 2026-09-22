@@ -1,6 +1,6 @@
 name: sy_im_flutter_sdk
 description: "SY IM Flutter SDK — Dart OpenIMAdapter over flutter_openim_sdk (no legacy MethodChannel shell)."
-version: 0.4.1
+version: 0.4.2
 homepage: https://github.com/carlcy/sy-im-flutter-sdk
 repository: https://github.com/carlcy/sy-im-flutter-sdk
 
@@ -12,8 +12,7 @@ dependencies:
   http: ^1.2.0
   flutter:
     sdk: flutter
-  # Production dependency: pub.dev (not a broken sibling path).
-  # Aligns with OpenIM server v3 on 47.105.48.196.
+  # Production dependency: pub.dev flutter_openim_sdk
   flutter_openim_sdk: ^3.8.3+hotfix.15
 
 dev_dependencies:

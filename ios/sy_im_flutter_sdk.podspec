@@ -2,7 +2,7 @@
 # Real native IM is provided by flutter_openim_sdk.
 Pod::Spec.new do |s|
   s.name             = 'sy_im_flutter_sdk'
-  s.version          = '0.4.1'
+  s.version          = '0.4.2'
   s.summary          = 'Tombstone — use Dart OpenIMAdapter / flutter_openim_sdk'
   s.homepage         = 'https://github.com/carlcy/sy_im_flutter_sdk'
   s.license          = { :type => 'MIT' }

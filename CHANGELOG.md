@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.2
+
+- README / example：去掉公开 IP；默认使用域名 `syrtcapi.shengyuchenyao.cn`
+- 安装说明改为优先 **pub.dev** `^0.4.2`
+
 ## 0.4.1
 
 - Align nested tombstone Android/iOS plugin versions with package `0.4.1`.

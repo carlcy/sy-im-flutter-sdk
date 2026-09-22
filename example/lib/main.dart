@@ -12,7 +12,7 @@ String defaultApiBase() {
   if (override.isNotEmpty) return override;
   return const String.fromEnvironment(
     'SY_API_HTTPS',
-    defaultValue: 'https://47.105.48.196',
+    defaultValue: 'https://syrtcapi.shengyuchenyao.cn',
   );
 }
 
@@ -50,8 +50,8 @@ class _ImDemoPageState extends State<ImDemoPage> {
   final _userId = TextEditingController(text: 'u1001');
   final _jwt = TextEditingController();
   final _token = TextEditingController();
-  final _imApi = TextEditingController(text: 'https://47.105.48.196/openim');
-  final _imWs = TextEditingController(text: 'wss://47.105.48.196/msg_gateway');
+  final _imApi = TextEditingController(text: 'https://syrtcapi.shengyuchenyao.cn/openim');
+  final _imWs = TextEditingController(text: 'wss://syrtcapi.shengyuchenyao.cn/msg_gateway');
   final _peer = TextEditingController(text: 'u1002');
   final _text = TextEditingController(text: 'hello from flutter');
 

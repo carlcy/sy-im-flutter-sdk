@@ -1,7 +1,7 @@
 name: sy_im_flutter_sdk_example
 description: Demonstrates sy_im_flutter_sdk with OpenIMAdapter.
 publish_to: "none"
-version: 0.4.1+1
+version: 0.4.2+1
 
 environment:
   sdk: ^3.6.2
