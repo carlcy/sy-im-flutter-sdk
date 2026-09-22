@@ -19,7 +19,7 @@
 
 - **Breaking (cleanup):** removed legacy no-op `SyImFlutterSdkPlugin` MethodChannel shell (Android/iOS).
 - Package is now a **pure Dart** library: single path `SyIm` → `OpenIMAdapter` → `flutter_openim_sdk`.
-- Example + docs: one `SY_API_BASE` / HTTPS IP switch; prefer `https://47.105.48.196`.
+- Example + docs: one `SY_API_BASE` switch; prefer production domain.
 
 ## 0.2.0 — 2026-09-21
 
