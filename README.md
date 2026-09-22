@@ -1,8 +1,20 @@
-# sy_im_flutter_sdk (0.2.0)
+# sy_im_flutter_sdk (0.4.0)
 
 Production-ready SY IM Flutter plugin. Real OpenIM via **pub.dev** `flutter_openim_sdk` (not a stub MethodChannel / broken path dep).
 
 ## Install
+
+Preferred (GitHub hyphen remote + tag):
+
+```yaml
+dependencies:
+  sy_im_flutter_sdk:
+    git:
+      url: https://github.com/carlcy/sy-im-flutter-sdk.git
+      ref: v0.4.0
+```
+
+Monorepo path:
 
 ```yaml
 dependencies:
