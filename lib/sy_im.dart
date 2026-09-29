@@ -31,10 +31,7 @@ class SyIm {
     if (_engine != null) {
       return _engine!;
     }
-    final engine = SyImEngine._(
-      appId: appId,
-      apiBaseUrl: apiBaseUrl,
-    );
+    final engine = SyImEngine._(appId: appId, apiBaseUrl: apiBaseUrl);
     await engine._prepare(
       imApiAddr: imApiAddr,
       imWsAddr: imWsAddr,
@@ -50,14 +47,13 @@ class SyIm {
     String? imApiAddr,
     String? imWsAddr,
     String? dataDir,
-  }) =>
-      create(
-        appId: appId,
-        apiBaseUrl: apiBaseUrl,
-        imApiAddr: imApiAddr,
-        imWsAddr: imWsAddr,
-        dataDir: dataDir,
-      );
+  }) => create(
+    appId: appId,
+    apiBaseUrl: apiBaseUrl,
+    imApiAddr: imApiAddr,
+    imWsAddr: imWsAddr,
+    dataDir: dataDir,
+  );
 
   static SyImEngine? get instance => _engine;
 
@@ -85,7 +81,8 @@ class SyImEngine {
   void Function()? onKickedOffline;
   void Function()? onUserTokenExpired;
   void Function(String msgId, String fromUserId, String? groupId, String? text)?
-      onRecvNewMessage;
+  onRecvNewMessage;
+  void Function(List<SyImReadReceipt> receipts)? onRecvC2CReadReceipt;
   void Function()? onConversationUpdated;
 
   Future<void> _prepare({
@@ -112,7 +109,8 @@ class SyImEngine {
     required String imWsAddr,
     String? dataDir,
   }) async {
-    final dir = dataDir ??
+    final dir =
+        dataDir ??
         _dataDir ??
         Directory.systemTemp.createTempSync('sy_im').path;
     _dataDir = dir;
@@ -124,19 +122,20 @@ class SyImEngine {
     adapter.onUserTokenExpired = () => onUserTokenExpired?.call();
     adapter.onRecvNewMessage = (id, from, gid, text) =>
         onRecvNewMessage?.call(id, from, gid, text);
+    adapter.onRecvC2CReadReceipt = (receipts) =>
+        onRecvC2CReadReceipt?.call(receipts);
     adapter.onConversationUpdated = () => onConversationUpdated?.call();
     await adapter.initSdk(dataDir: dir);
     _adapter = adapter;
     _initialized = true;
   }
 
-  Future<void> login({
-    required String userId,
-    required String token,
-  }) async {
+  Future<void> login({required String userId, required String token}) async {
     final a = _adapter;
     if (a == null || !_initialized) {
-      throw StateError('call configureOpenIM (imApiAddr/imWsAddr) before login');
+      throw StateError(
+        'call configureOpenIM (imApiAddr/imWsAddr) before login',
+      );
     }
     await a.login(userId: userId, token: token);
     _currentUserId = userId;
@@ -174,6 +173,122 @@ class SyImEngine {
     return a.getConversations();
   }
 
+  /// 标记会话已读。单聊会向对方发送已读回执。
+  Future<void> markConversationAsRead({required String conversationId}) {
+    return _requireLoggedIn().markConversationAsRead(
+      conversationId: conversationId,
+    );
+  }
+
+  /// 全部会话未读总数。单会话未读见 [SyImConversation.unreadCount]。
+  Future<int> getTotalUnreadCount() {
+    return _requireLoggedIn().getTotalUnreadCount();
+  }
+
+  Future<void> addFriend({required String userId, String reason = ''}) {
+    return _requireLoggedIn().addFriend(userId: userId, reason: reason);
+  }
+
+  Future<List<SyImFriendApplication>> getFriendApplications({
+    bool sentByMe = false,
+  }) {
+    return _requireLoggedIn().getFriendApplications(sentByMe: sentByMe);
+  }
+
+  Future<void> acceptFriendApplication({
+    required String userId,
+    String handleMsg = '',
+  }) {
+    return _requireLoggedIn().acceptFriendApplication(
+      userId: userId,
+      handleMsg: handleMsg,
+    );
+  }
+
+  Future<void> refuseFriendApplication({
+    required String userId,
+    String handleMsg = '',
+  }) {
+    return _requireLoggedIn().refuseFriendApplication(
+      userId: userId,
+      handleMsg: handleMsg,
+    );
+  }
+
+  Future<List<SyImFriend>> getFriends() {
+    return _requireLoggedIn().getFriends();
+  }
+
+  Future<SyImGroup> createGroup({
+    required String groupName,
+    String groupId = '',
+    List<String> memberUserIds = const [],
+  }) {
+    return _requireLoggedIn().createGroup(
+      groupName: groupName,
+      groupId: groupId,
+      memberUserIds: memberUserIds,
+    );
+  }
+
+  Future<void> inviteToGroup({
+    required String groupId,
+    required List<String> userIds,
+    String reason = '',
+  }) {
+    return _requireLoggedIn().inviteToGroup(
+      groupId: groupId,
+      userIds: userIds,
+      reason: reason,
+    );
+  }
+
+  Future<void> kickGroupMembers({
+    required String groupId,
+    required List<String> userIds,
+    String reason = '',
+  }) {
+    return _requireLoggedIn().kickGroupMembers(
+      groupId: groupId,
+      userIds: userIds,
+      reason: reason,
+    );
+  }
+
+  Future<void> joinGroup({required String groupId, String reason = ''}) {
+    return _requireLoggedIn().joinGroup(groupId: groupId, reason: reason);
+  }
+
+  Future<void> quitGroup({required String groupId}) {
+    return _requireLoggedIn().quitGroup(groupId: groupId);
+  }
+
+  Future<void> dismissGroup({required String groupId}) {
+    return _requireLoggedIn().dismissGroup(groupId: groupId);
+  }
+
+  Future<List<SyImGroup>> getJoinedGroups() {
+    return _requireLoggedIn().getJoinedGroups();
+  }
+
+  Future<List<SyImGroupMember>> getGroupMembers({
+    required String groupId,
+    int count = 100,
+  }) {
+    return _requireLoggedIn().getGroupMembers(groupId: groupId, count: count);
+  }
+
+  OpenIMAdapter _requireLoggedIn() {
+    if (!_loggedIn) {
+      throw StateError('login required');
+    }
+    final a = _adapter;
+    if (a == null) {
+      throw StateError('login required');
+    }
+    return a;
+  }
+
   bool get isLoggedIn => _loggedIn;
   String? get currentUserId => _currentUserId;
   bool get isOpenIMReady => _initialized;
@@ -193,8 +308,9 @@ class SyImEngine {
     String? userJwt,
     String? appSecret,
   }) {
-    return controlPlane(userJwt: userJwt, appSecret: appSecret)
-        .getToken(userId: userId);
+    return controlPlane(
+      userJwt: userJwt,
+      appSecret: appSecret,
+    ).getToken(userId: userId);
   }
 }
-

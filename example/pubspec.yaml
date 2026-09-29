@@ -1,7 +1,7 @@
 name: sy_im_flutter_sdk_example
 description: Demonstrates sy_im_flutter_sdk with OpenIMAdapter.
 publish_to: "none"
-version: 0.4.2+1
+version: 0.4.3+1
 
 environment:
   sdk: ^3.6.2
@@ -10,8 +10,10 @@ dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.8
-  http: ^1.2.0
   path_provider: ^2.1.5
+  # Local example only. Customers write:
+  #   sy_im_flutter_sdk: ^0.4.3
+  # Do not integrate by unzipping sy-im-flutter-*.zip.
   sy_im_flutter_sdk:
     path: ../
 
