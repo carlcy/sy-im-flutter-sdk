@@ -4,7 +4,7 @@
 
 ```yaml
 dependencies:
-  sy_im_flutter_sdk: ^0.4.3
+  sy_im_flutter_sdk: ^0.5.0
 ```
 
 本目录的 `pubspec.yaml` 使用 `path: ../`，只为在本仓库里改 SDK 后直接运行。

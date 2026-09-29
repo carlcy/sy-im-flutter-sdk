@@ -8,11 +8,27 @@ library;
 
 export 'openim_adapter.dart';
 export 'im_control_plane.dart';
+export 'sy_im_unread.dart';
 
+import 'dart:async';
 import 'dart:io';
 
 import 'openim_adapter.dart';
 import 'im_control_plane.dart';
+import 'sy_im_unread.dart';
+
+/// 与 Android / iOS IM SDK 对齐的版本号。
+const String syImSdkVersion = '0.5.0';
+
+/// `@所有人` 时放进 [SyImEngine.sendAtTextMessage] 的 `atUserIds`。
+const String syImAtAllUserId = 'AtAllTag';
+
+/// 会话免打扰。0 正常，1 不接收，2 仅在线接收。
+class SyImRecvOpt {
+  static const int normal = 0;
+  static const int notReceive = 1;
+  static const int onlineOnly = 2;
+}
 
 /// 全局入口，对齐 RTC `SyRtcEngine.create`。
 class SyIm {
@@ -47,13 +63,14 @@ class SyIm {
     String? imApiAddr,
     String? imWsAddr,
     String? dataDir,
-  }) => create(
-    appId: appId,
-    apiBaseUrl: apiBaseUrl,
-    imApiAddr: imApiAddr,
-    imWsAddr: imWsAddr,
-    dataDir: dataDir,
-  );
+  }) =>
+      create(
+        appId: appId,
+        apiBaseUrl: apiBaseUrl,
+        imApiAddr: imApiAddr,
+        imWsAddr: imWsAddr,
+        dataDir: dataDir,
+      );
 
   static SyImEngine? get instance => _engine;
 
@@ -74,6 +91,13 @@ class SyImEngine {
   bool _loggedIn = false;
   String? _currentUserId;
   String? _dataDir;
+  final SyImUnreadHub _unread = SyImUnreadHub();
+
+  /// 总未读和各会话未读。由总未读回调、会话变更、新消息和 markRead 推动。
+  Stream<SyImUnreadUpdate> get unreadChanges => _unread.changes;
+
+  /// 最近一次未读快照里的总数，不额外请求网络。
+  int get totalUnread => _unread.totalUnread;
 
   void Function()? onConnectSuccess;
   void Function()? onConnecting;
@@ -81,8 +105,11 @@ class SyImEngine {
   void Function()? onKickedOffline;
   void Function()? onUserTokenExpired;
   void Function(String msgId, String fromUserId, String? groupId, String? text)?
-  onRecvNewMessage;
+      onRecvNewMessage;
   void Function(List<SyImReadReceipt> receipts)? onRecvC2CReadReceipt;
+  void Function(SyImRevokedMessage info)? onMessageRevoked;
+  void Function(SyImTypingStatus status)? onTypingChanged;
+  void Function(SyImUnreadUpdate update)? onUnreadChanged;
   void Function()? onConversationUpdated;
 
   Future<void> _prepare({
@@ -109,8 +136,7 @@ class SyImEngine {
     required String imWsAddr,
     String? dataDir,
   }) async {
-    final dir =
-        dataDir ??
+    final dir = dataDir ??
         _dataDir ??
         Directory.systemTemp.createTempSync('sy_im').path;
     _dataDir = dir;
@@ -120,10 +146,20 @@ class SyImEngine {
     adapter.onConnectFailed = (c, m) => onConnectFailed?.call(c, m);
     adapter.onKickedOffline = () => onKickedOffline?.call();
     adapter.onUserTokenExpired = () => onUserTokenExpired?.call();
-    adapter.onRecvNewMessage = (id, from, gid, text) =>
-        onRecvNewMessage?.call(id, from, gid, text);
-    adapter.onRecvC2CReadReceipt = (receipts) =>
-        onRecvC2CReadReceipt?.call(receipts);
+    adapter.onRecvNewMessage = (id, from, gid, text) {
+      onRecvNewMessage?.call(id, from, gid, text);
+      unawaited(_syncUnreadFromSdk());
+    };
+    adapter.onRecvC2CReadReceipt =
+        (receipts) => onRecvC2CReadReceipt?.call(receipts);
+    adapter.onMessageRevoked = (info) => onMessageRevoked?.call(info);
+    adapter.onTypingChanged = (status) => onTypingChanged?.call(status);
+    adapter.onTotalUnreadChanged = (total) {
+      _publishUnread(() => _unread.applyTotal(total));
+    };
+    adapter.onConversationsChanged = (conversations) {
+      _publishUnread(() => _unread.applyDelta(conversations));
+    };
     adapter.onConversationUpdated = () => onConversationUpdated?.call();
     await adapter.initSdk(dataDir: dir);
     _adapter = adapter;
@@ -140,12 +176,14 @@ class SyImEngine {
     await a.login(userId: userId, token: token);
     _currentUserId = userId;
     _loggedIn = true;
+    await _syncUnreadFromSdk();
   }
 
   Future<void> logout() async {
     await _adapter?.logout();
     _loggedIn = false;
     _currentUserId = null;
+    _publishUnread(_unread.clear);
   }
 
   Future<String> sendTextMessage({
@@ -169,15 +207,19 @@ class SyImEngine {
 
   Future<List<SyImConversation>> getConversations() async {
     final a = _adapter;
-    if (a == null) return const [];
-    return a.getConversations();
+    if (a == null) return _unread.conversations;
+    final list = await a.getConversations();
+    _publishUnread(() => _unread.applyFullList(list));
+    return list;
   }
 
-  /// 标记会话已读。单聊会向对方发送已读回执。
-  Future<void> markConversationAsRead({required String conversationId}) {
-    return _requireLoggedIn().markConversationAsRead(
+  /// 标记会话已读。单聊会向对方发送已读回执，并立刻刷新未读。
+  Future<void> markConversationAsRead({required String conversationId}) async {
+    await _requireLoggedIn().markConversationAsRead(
       conversationId: conversationId,
     );
+    _publishUnread(() => _unread.markConversationRead(conversationId));
+    await _syncUnreadFromSdk();
   }
 
   /// 全部会话未读总数。单会话未读见 [SyImConversation.unreadCount]。
@@ -276,6 +318,190 @@ class SyImEngine {
     int count = 100,
   }) {
     return _requireLoggedIn().getGroupMembers(groupId: groupId, count: count);
+  }
+
+  Future<void> revokeMessage({
+    required String conversationId,
+    required String clientMsgId,
+  }) {
+    return _requireLoggedIn().revokeMessage(
+      conversationId: conversationId,
+      clientMsgId: clientMsgId,
+    );
+  }
+
+  Future<String> sendAtTextMessage({
+    required String groupId,
+    required String text,
+    required List<String> atUserIds,
+    Map<String, String> atNicknames = const {},
+  }) {
+    return _requireLoggedIn().sendAtTextMessage(
+      groupId: groupId,
+      text: text,
+      atUserIds: atUserIds,
+      atNicknames: atNicknames,
+    );
+  }
+
+  Future<String> sendCustomMessage({
+    String? toUserId,
+    String? groupId,
+    required String data,
+    String customExtension = '',
+    String description = '',
+  }) {
+    if ((toUserId == null || toUserId.isEmpty) &&
+        (groupId == null || groupId.isEmpty)) {
+      throw ArgumentError('provide toUserId or groupId');
+    }
+    return _requireLoggedIn().sendCustomMessage(
+      toUserId: toUserId,
+      groupId: groupId,
+      data: data,
+      customExtension: customExtension,
+      description: description,
+    );
+  }
+
+  Future<List<SyImSearchHit>> searchMessages({
+    String? conversationId,
+    required String keyword,
+    int count = 20,
+  }) {
+    return _requireLoggedIn().searchMessages(
+      conversationId: conversationId,
+      keyword: keyword,
+      count: count,
+    );
+  }
+
+  Future<void> pinConversation({
+    required String conversationId,
+    required bool pinned,
+  }) {
+    return _requireLoggedIn().pinConversation(
+      conversationId: conversationId,
+      pinned: pinned,
+    );
+  }
+
+  Future<void> setConversationDraft({
+    required String conversationId,
+    required String draft,
+  }) {
+    return _requireLoggedIn().setConversationDraft(
+      conversationId: conversationId,
+      draft: draft,
+    );
+  }
+
+  Future<void> setConversationDoNotDisturb({
+    required String conversationId,
+    required int status,
+  }) {
+    return _requireLoggedIn().setConversationDoNotDisturb(
+      conversationId: conversationId,
+      status: status,
+    );
+  }
+
+  Future<void> setTyping({
+    required String conversationId,
+    required bool typing,
+  }) {
+    return _requireLoggedIn().setTyping(
+      conversationId: conversationId,
+      typing: typing,
+    );
+  }
+
+  /// 群消息已读人数。当前 OpenIM Flutter 绑定只返回已读/未读计数，不含已读成员 id。
+  Future<SyImGroupReadInfo> getGroupMessageReadInfo({
+    required String conversationId,
+    required String clientMsgId,
+  }) {
+    return _requireLoggedIn().getGroupMessageReadInfo(
+      conversationId: conversationId,
+      clientMsgId: clientMsgId,
+    );
+  }
+
+  Future<SyImUserProfile> getSelfProfile() {
+    return _requireLoggedIn().getSelfProfile();
+  }
+
+  Future<void> setSelfProfile({
+    String? nickname,
+    String? faceUrl,
+    String? ex,
+  }) {
+    return _requireLoggedIn().setSelfProfile(
+      nickname: nickname,
+      faceUrl: faceUrl,
+      ex: ex,
+    );
+  }
+
+  Future<List<SyImUserProfile>> getUserProfiles(List<String> userIds) {
+    return _requireLoggedIn().getUserProfiles(userIds);
+  }
+
+  Future<void> setGroupCustomInfo({
+    required String groupId,
+    String? groupName,
+    String? notification,
+    String? ex,
+  }) {
+    return _requireLoggedIn().setGroupCustomInfo(
+      groupId: groupId,
+      groupName: groupName,
+      notification: notification,
+      ex: ex,
+    );
+  }
+
+  Future<void> setGroupMemberCustomInfo({
+    required String groupId,
+    required String userId,
+    String? nickname,
+    String? ex,
+  }) {
+    return _requireLoggedIn().setGroupMemberCustomInfo(
+      groupId: groupId,
+      userId: userId,
+      nickname: nickname,
+      ex: ex,
+    );
+  }
+
+  Future<void> addToBlacklist({required String userId}) {
+    return _requireLoggedIn().addToBlacklist(userId: userId);
+  }
+
+  Future<void> removeFromBlacklist({required String userId}) {
+    return _requireLoggedIn().removeFromBlacklist(userId: userId);
+  }
+
+  Future<List<SyImBlacklistUser>> getBlacklist() {
+    return _requireLoggedIn().getBlacklist();
+  }
+
+  void _publishUnread(void Function() change) {
+    change();
+    onUnreadChanged?.call(_unread.latest);
+  }
+
+  Future<void> _syncUnreadFromSdk() async {
+    final a = _adapter;
+    if (a == null || !_loggedIn) return;
+    try {
+      final list = await a.getConversations();
+      final total = await a.getTotalUnreadCount();
+      _publishUnread(() => _unread.applyFullList(list, total: total));
+    } catch (_) {
+      // 未读同步失败时保留上一份快照，不把登录或收消息变成失败。
+    }
   }
 
   OpenIMAdapter _requireLoggedIn() {

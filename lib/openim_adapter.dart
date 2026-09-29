@@ -24,8 +24,12 @@ class OpenIMAdapter {
   void Function()? onKickedOffline;
   void Function()? onUserTokenExpired;
   void Function(String msgId, String fromUserId, String? groupId, String? text)?
-  onRecvNewMessage;
+      onRecvNewMessage;
   void Function(List<SyImReadReceipt> receipts)? onRecvC2CReadReceipt;
+  void Function(SyImRevokedMessage info)? onMessageRevoked;
+  void Function(SyImTypingStatus status)? onTypingChanged;
+  void Function(int totalUnread)? onTotalUnreadChanged;
+  void Function(List<SyImConversation> conversations)? onConversationsChanged;
   void Function()? onConversationUpdated;
 
   bool get isInited => _inited;
@@ -71,20 +75,15 @@ class OpenIMAdapter {
       );
       await OpenIM.iMManager.messageManager.setAdvancedMsgListener(
         OnAdvancedMsgListener(
-          onRecvNewMessage: (msg) {
-            onRecvNewMessage?.call(
-              msg.clientMsgID ?? '',
-              msg.sendID ?? '',
-              msg.groupID,
-              msg.textElem?.content,
-            );
-          },
-          onRecvOfflineNewMessage: (msg) {
-            onRecvNewMessage?.call(
-              msg.clientMsgID ?? '',
-              msg.sendID ?? '',
-              msg.groupID,
-              msg.textElem?.content,
+          onRecvNewMessage: (msg) => _emitIncoming(msg),
+          onRecvOfflineNewMessage: (msg) => _emitIncoming(msg),
+          onNewRecvMessageRevoked: (info) {
+            onMessageRevoked?.call(
+              SyImRevokedMessage(
+                clientMsgId: info.clientMsgID ?? '',
+                revokerId: info.revokerID,
+                revokerNickname: info.revokerNickname,
+              ),
             );
           },
           onRecvC2CReadReceipt: (list) {
@@ -107,8 +106,26 @@ class OpenIMAdapter {
       );
       await OpenIM.iMManager.conversationManager.setConversationListener(
         OnConversationListener(
-          onNewConversation: (_) => onConversationUpdated?.call(),
-          onConversationChanged: (_) => onConversationUpdated?.call(),
+          onNewConversation: (list) {
+            onConversationsChanged?.call(list.map(_mapConversation).toList());
+            onConversationUpdated?.call();
+          },
+          onConversationChanged: (list) {
+            onConversationsChanged?.call(list.map(_mapConversation).toList());
+            onConversationUpdated?.call();
+          },
+          onTotalUnreadMessageCountChanged: (count) {
+            onTotalUnreadChanged?.call(count);
+          },
+          onInputStatusChanged: (data) {
+            onTypingChanged?.call(
+              SyImTypingStatus(
+                userId: data.userID,
+                conversationId: data.conversationID,
+                typing: data.platformIDs?.isNotEmpty ?? false,
+              ),
+            );
+          },
         ),
       );
     });
@@ -156,20 +173,9 @@ class OpenIMAdapter {
 
   Future<List<SyImConversation>> getConversations() async {
     return _call('getAllConversationList', () async {
-      final list = await OpenIM.iMManager.conversationManager
-          .getAllConversationList();
-      return list
-          .map(
-            (c) => SyImConversation(
-              conversationId: c.conversationID,
-              userId: c.userID,
-              groupId: c.groupID,
-              showName: c.showName,
-              latestText: c.latestMsg?.textElem?.content,
-              unreadCount: c.unreadCount,
-            ),
-          )
-          .toList();
+      final list =
+          await OpenIM.iMManager.conversationManager.getAllConversationList();
+      return list.map(_mapConversation).toList();
     });
   }
 
@@ -185,8 +191,8 @@ class OpenIMAdapter {
   /// 全部会话未读总数。
   Future<int> getTotalUnreadCount() async {
     return _call('getTotalUnreadMsgCount', () async {
-      final raw = await OpenIM.iMManager.conversationManager
-          .getTotalUnreadMsgCount();
+      final raw =
+          await OpenIM.iMManager.conversationManager.getTotalUnreadMsgCount();
       return _asCount(raw);
     });
   }
@@ -208,9 +214,9 @@ class OpenIMAdapter {
     return _call('getFriendApplications', () async {
       final list = sentByMe
           ? await OpenIM.iMManager.friendshipManager
-                .getFriendApplicationListAsApplicant()
+              .getFriendApplicationListAsApplicant()
           : await OpenIM.iMManager.friendshipManager
-                .getFriendApplicationListAsRecipient();
+              .getFriendApplicationListAsRecipient();
       return list
           .map(
             (a) => SyImFriendApplication(
@@ -374,6 +380,332 @@ class OpenIMAdapter {
           .toList();
     });
   }
+
+  Future<void> revokeMessage({
+    required String conversationId,
+    required String clientMsgId,
+  }) async {
+    await _call('revokeMessage', () async {
+      await OpenIM.iMManager.messageManager.revokeMessage(
+        conversationID: conversationId,
+        clientMsgID: clientMsgId,
+      );
+    });
+  }
+
+  Future<String> sendAtTextMessage({
+    required String groupId,
+    required String text,
+    required List<String> atUserIds,
+    Map<String, String> atNicknames = const {},
+  }) async {
+    return _call('sendAtTextMessage', () async {
+      final msg = await OpenIM.iMManager.messageManager.createTextAtMessage(
+        text: text,
+        atUserIDList: atUserIds,
+        atUserInfoList: [
+          for (final id in atUserIds)
+            AtUserInfo(atUserID: id, groupNickname: atNicknames[id]),
+        ],
+      );
+      return _sendCreated(message: msg, groupId: groupId, pushDesc: text);
+    });
+  }
+
+  Future<String> sendCustomMessage({
+    String? toUserId,
+    String? groupId,
+    required String data,
+    String customExtension = '',
+    String description = '',
+  }) async {
+    return _call('sendCustomMessage', () async {
+      final msg = await OpenIM.iMManager.messageManager.createCustomMessage(
+        data: data,
+        extension: customExtension,
+        description: description,
+      );
+      return _sendCreated(
+        message: msg,
+        toUserId: toUserId,
+        groupId: groupId,
+        pushDesc: description.isEmpty ? data : description,
+      );
+    });
+  }
+
+  Future<List<SyImSearchHit>> searchMessages({
+    String? conversationId,
+    required String keyword,
+    int count = 20,
+  }) async {
+    return _call('searchLocalMessages', () async {
+      final result = await OpenIM.iMManager.messageManager.searchLocalMessages(
+        conversationID: conversationId,
+        keywordList: [keyword],
+        count: count,
+      );
+      final items = result.searchResultItems ?? result.findResultItems ?? [];
+      final hits = <SyImSearchHit>[];
+      for (final item in items) {
+        for (final message in item.messageList ?? const <Message>[]) {
+          hits.add(
+            SyImSearchHit(
+              conversationId: item.conversationID ?? conversationId ?? '',
+              showName: item.showName,
+              clientMsgId: message.clientMsgID ?? '',
+              sendUserId: message.sendID,
+              text: _messagePreview(message),
+            ),
+          );
+        }
+      }
+      return hits;
+    });
+  }
+
+  Future<void> pinConversation({
+    required String conversationId,
+    required bool pinned,
+  }) async {
+    await _call('pinConversation', () async {
+      await OpenIM.iMManager.conversationManager.pinConversation(
+        conversationID: conversationId,
+        isPinned: pinned,
+      );
+    });
+  }
+
+  Future<void> setConversationDraft({
+    required String conversationId,
+    required String draft,
+  }) async {
+    await _call('setConversationDraft', () async {
+      await OpenIM.iMManager.conversationManager.setConversationDraft(
+        conversationID: conversationId,
+        draftText: draft,
+      );
+    });
+  }
+
+  Future<void> setConversationDoNotDisturb({
+    required String conversationId,
+    required int status,
+  }) async {
+    if (status < 0 || status > 2) {
+      throw ArgumentError('status must be 0, 1, or 2');
+    }
+    await _call('setConversation', () async {
+      await OpenIM.iMManager.conversationManager.setConversation(
+        conversationId,
+        ConversationReq(recvMsgOpt: status),
+      );
+    });
+  }
+
+  Future<void> setTyping({
+    required String conversationId,
+    required bool typing,
+  }) async {
+    await _call('changeInputStates', () async {
+      await OpenIM.iMManager.conversationManager.changeInputStates(
+        conversationID: conversationId,
+        focus: typing,
+      );
+    });
+  }
+
+  Future<SyImGroupReadInfo> getGroupMessageReadInfo({
+    required String conversationId,
+    required String clientMsgId,
+  }) async {
+    return _call('findMessageList', () async {
+      final result = await OpenIM.iMManager.messageManager.findMessageList(
+        searchParams: [
+          SearchParams(
+            conversationID: conversationId,
+            clientMsgIDList: [clientMsgId],
+          ),
+        ],
+      );
+      final items = result.findResultItems ?? result.searchResultItems ?? [];
+      for (final item in items) {
+        for (final message in item.messageList ?? const <Message>[]) {
+          if (message.clientMsgID != clientMsgId) continue;
+          final info = message.attachedInfoElem?.groupHasReadInfo;
+          return SyImGroupReadInfo(
+            hasReadCount: info?.hasReadCount ?? 0,
+            unreadCount: info?.unreadCount ?? 0,
+          );
+        }
+      }
+      return const SyImGroupReadInfo(hasReadCount: 0, unreadCount: 0);
+    });
+  }
+
+  Future<SyImUserProfile> getSelfProfile() async {
+    return _call('getSelfUserInfo', () async {
+      final info = await OpenIM.iMManager.userManager.getSelfUserInfo();
+      return SyImUserProfile(
+        userId: info.userID ?? '',
+        nickname: info.nickname,
+        faceUrl: info.faceURL,
+        ex: info.ex,
+      );
+    });
+  }
+
+  Future<void> setSelfProfile({
+    String? nickname,
+    String? faceUrl,
+    String? ex,
+  }) async {
+    await _call('setSelfInfo', () async {
+      await OpenIM.iMManager.userManager.setSelfInfo(
+        nickname: nickname,
+        faceURL: faceUrl,
+        ex: ex,
+      );
+    });
+  }
+
+  Future<List<SyImUserProfile>> getUserProfiles(List<String> userIds) async {
+    return _call('getUsersInfo', () async {
+      final list = await OpenIM.iMManager.userManager.getUsersInfo(
+        userIDList: userIds,
+      );
+      return list
+          .map(
+            (info) => SyImUserProfile(
+              userId: info.userID ?? '',
+              nickname: info.nickname,
+              faceUrl: info.faceURL,
+              ex: info.ex,
+            ),
+          )
+          .toList();
+    });
+  }
+
+  Future<void> setGroupCustomInfo({
+    required String groupId,
+    String? groupName,
+    String? notification,
+    String? ex,
+  }) async {
+    await _call('setGroupInfo', () async {
+      await OpenIM.iMManager.groupManager.setGroupInfo(
+        GroupInfo(
+          groupID: groupId,
+          groupName: groupName,
+          notification: notification,
+          ex: ex,
+        ),
+      );
+    });
+  }
+
+  Future<void> setGroupMemberCustomInfo({
+    required String groupId,
+    required String userId,
+    String? nickname,
+    String? ex,
+  }) async {
+    await _call('setGroupMemberInfo', () async {
+      await OpenIM.iMManager.groupManager.setGroupMemberInfo(
+        groupMembersInfo: SetGroupMemberInfo(
+          groupID: groupId,
+          userID: userId,
+          nickname: nickname,
+          ex: ex,
+        ),
+      );
+    });
+  }
+
+  Future<void> addToBlacklist({required String userId}) async {
+    await _call('addBlacklist', () async {
+      await OpenIM.iMManager.friendshipManager.addBlacklist(userID: userId);
+    });
+  }
+
+  Future<void> removeFromBlacklist({required String userId}) async {
+    await _call('removeBlacklist', () async {
+      await OpenIM.iMManager.friendshipManager.removeBlacklist(userID: userId);
+    });
+  }
+
+  Future<List<SyImBlacklistUser>> getBlacklist() async {
+    return _call('getBlacklist', () async {
+      final list = await OpenIM.iMManager.friendshipManager.getBlacklist();
+      return list
+          .map(
+            (info) => SyImBlacklistUser(
+              userId: info.blockUserID ?? info.userID ?? '',
+              nickname: info.nickname,
+              faceUrl: info.faceURL,
+            ),
+          )
+          .toList();
+    });
+  }
+
+  void _emitIncoming(Message msg) {
+    onRecvNewMessage?.call(
+      msg.clientMsgID ?? '',
+      msg.sendID ?? '',
+      msg.groupID,
+      _messagePreview(msg),
+    );
+  }
+
+  Future<String> _sendCreated({
+    required Message message,
+    String? toUserId,
+    String? groupId,
+    required String pushDesc,
+  }) async {
+    final sent = await OpenIM.iMManager.messageManager.sendMessage(
+      message: message,
+      userID: toUserId ?? '',
+      groupID: groupId ?? '',
+      offlinePushInfo: OfflinePushInfo(
+        title: 'new message',
+        desc: pushDesc,
+        iOSBadgeCount: true,
+        iOSPushSound: '+1',
+      ),
+    );
+    return sent.clientMsgID ?? '';
+  }
+}
+
+SyImConversation _mapConversation(ConversationInfo conversation) {
+  return SyImConversation(
+    conversationId: conversation.conversationID,
+    userId: conversation.userID,
+    groupId: conversation.groupID,
+    showName: conversation.showName,
+    latestText: conversation.latestMsg == null
+        ? null
+        : _messagePreview(conversation.latestMsg!),
+    unreadCount: conversation.unreadCount,
+    isPinned: conversation.isPinned ?? false,
+    draftText: conversation.draftText,
+    recvMsgOpt: conversation.recvMsgOpt ?? 0,
+    groupAtType: conversation.groupAtType ?? 0,
+    ex: conversation.ex,
+  );
+}
+
+String? _messagePreview(Message message) {
+  final text = message.textElem?.content;
+  if (text != null && text.isNotEmpty) return text;
+  final atText = message.atTextElem?.text;
+  if (atText != null && atText.isNotEmpty) return atText;
+  final description = message.customElem?.description;
+  if (description != null && description.isNotEmpty) return description;
+  return message.customElem?.data;
 }
 
 int _asCount(Object? raw) {
@@ -396,6 +728,11 @@ class SyImConversation {
     this.showName,
     this.latestText,
     this.unreadCount = 0,
+    this.isPinned = false,
+    this.draftText,
+    this.recvMsgOpt = 0,
+    this.groupAtType = 0,
+    this.ex,
   });
 
   final String conversationId;
@@ -404,6 +741,31 @@ class SyImConversation {
   final String? showName;
   final String? latestText;
   final int unreadCount;
+  final bool isPinned;
+  final String? draftText;
+
+  /// 0 正常，1 免打扰，2 仅在线接收。
+  final int recvMsgOpt;
+
+  /// 0 无，1 @我，2 @所有人，3 @所有人且@我，4 群公告。
+  final int groupAtType;
+  final String? ex;
+
+  SyImConversation copyWith({int? unreadCount}) {
+    return SyImConversation(
+      conversationId: conversationId,
+      userId: userId,
+      groupId: groupId,
+      showName: showName,
+      latestText: latestText,
+      unreadCount: unreadCount ?? this.unreadCount,
+      isPinned: isPinned,
+      draftText: draftText,
+      recvMsgOpt: recvMsgOpt,
+      groupAtType: groupAtType,
+      ex: ex,
+    );
+  }
 }
 
 /// 单聊已读回执。
@@ -472,4 +834,86 @@ class SyImGroupMember {
   final String userId;
   final String? nickname;
   final int roleLevel;
+}
+
+class SyImRevokedMessage {
+  const SyImRevokedMessage({
+    required this.clientMsgId,
+    this.revokerId,
+    this.revokerNickname,
+  });
+
+  final String clientMsgId;
+  final String? revokerId;
+  final String? revokerNickname;
+}
+
+class SyImSearchHit {
+  const SyImSearchHit({
+    required this.conversationId,
+    required this.clientMsgId,
+    this.showName,
+    this.sendUserId,
+    this.text,
+  });
+
+  final String conversationId;
+  final String clientMsgId;
+  final String? showName;
+  final String? sendUserId;
+  final String? text;
+}
+
+class SyImTypingStatus {
+  const SyImTypingStatus({
+    required this.userId,
+    required this.conversationId,
+    required this.typing,
+  });
+
+  final String userId;
+  final String conversationId;
+  final bool typing;
+}
+
+/// 群消息已读概况。`readUserIds` 在 flutter_openim_sdk 3.8.3+hotfix.15 中为空，
+/// 该版本的 [GroupHasReadInfo] 只有已读人数和未读人数。
+class SyImGroupReadInfo {
+  const SyImGroupReadInfo({
+    required this.hasReadCount,
+    required this.unreadCount,
+    this.readUserIds = const [],
+  });
+
+  final int hasReadCount;
+  final int unreadCount;
+  final List<String> readUserIds;
+}
+
+class SyImUserProfile {
+  const SyImUserProfile({
+    required this.userId,
+    this.nickname,
+    this.faceUrl,
+    this.ex,
+  });
+
+  final String userId;
+  final String? nickname;
+  final String? faceUrl;
+
+  /// 业务自定义资料，对应 OpenIM `ex`。
+  final String? ex;
+}
+
+class SyImBlacklistUser {
+  const SyImBlacklistUser({
+    required this.userId,
+    this.nickname,
+    this.faceUrl,
+  });
+
+  final String userId;
+  final String? nickname;
+  final String? faceUrl;
 }

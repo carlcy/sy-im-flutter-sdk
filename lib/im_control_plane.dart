@@ -53,12 +53,13 @@ class ImControlPlane {
     required String fromUserId,
     required String toUserId,
     String reqMsg = '',
-  }) => _userPost('/api/user/im/friends/add', {
-    'appId': appId,
-    'fromUserId': fromUserId,
-    'toUserId': toUserId,
-    'reqMsg': reqMsg,
-  });
+  }) =>
+      _userPost('/api/user/im/friends/add', {
+        'appId': appId,
+        'fromUserId': fromUserId,
+        'toUserId': toUserId,
+        'reqMsg': reqMsg,
+      });
 
   Future<Map<String, dynamic>> listFriends({required String ownerUserId}) =>
       _userPost('/api/user/im/friends/list', {
@@ -70,12 +71,13 @@ class ImControlPlane {
     required String ownerUserId,
     required String groupName,
     List<String> memberUserIds = const [],
-  }) => _userPost('/api/user/im/groups/create', {
-    'appId': appId,
-    'ownerUserId': ownerUserId,
-    'groupName': groupName,
-    'memberUserIds': memberUserIds,
-  });
+  }) =>
+      _userPost('/api/user/im/groups/create', {
+        'appId': appId,
+        'ownerUserId': ownerUserId,
+        'groupName': groupName,
+        'memberUserIds': memberUserIds,
+      });
 
   Future<Map<String, dynamic>> listGroups({required String ownerUserId}) =>
       _userPost('/api/user/im/groups/list', {
@@ -123,12 +125,13 @@ class ImControlPlane {
     required String userId,
     required String conversationId,
     required int seq,
-  }) => _userPost('/api/user/im/messages/revoke', {
-    'appId': appId,
-    'userId': userId,
-    'conversationId': conversationId,
-    'seq': seq,
-  });
+  }) =>
+      _userPost('/api/user/im/messages/revoke', {
+        'appId': appId,
+        'userId': userId,
+        'conversationId': conversationId,
+        'seq': seq,
+      });
 
   Future<Map<String, dynamic>> _userPost(
     String path,
@@ -156,8 +159,7 @@ class ImControlPlane {
       throw Exception('unexpected response');
     }
     final m = Map<String, dynamic>.from(map);
-    final code =
-        m['code'] as int? ??
+    final code = m['code'] as int? ??
         (res.statusCode >= 200 && res.statusCode < 300 ? 0 : -1);
     if (res.statusCode < 200 || res.statusCode >= 300 || code != 0) {
       throw Exception(m['msg'] ?? 'HTTP ${res.statusCode}');

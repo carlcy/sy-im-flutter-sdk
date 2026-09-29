@@ -6,7 +6,7 @@
 
 ```yaml
 dependencies:
-  sy_im_flutter_sdk: ^0.4.3
+  sy_im_flutter_sdk: ^0.5.0
 ```
 
 本 example 为本地开发保留 `path: ../`，不要把 path 或 zip 解压路径交给客户。

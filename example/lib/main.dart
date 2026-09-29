@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:sy_im_flutter_sdk/sy_im.dart';
@@ -59,6 +61,8 @@ class _ImDemoPageState extends State<ImDemoPage> {
   final _convLines = <String>[];
   List<SyImConversation> _conversations = const [];
   SyImEngine? _engine;
+  StreamSubscription<SyImUnreadUpdate>? _unreadSub;
+  int _totalUnread = 0;
   String _status = '未初始化';
 
   void _log(String msg) {
@@ -113,7 +117,12 @@ class _ImDemoPageState extends State<ImDemoPage> {
           _log('read by ${r.userId}: ${r.msgIds.join(",")}');
         }
       };
-      eng.onConversationUpdated = () => _refreshConvs();
+      eng.onMessageRevoked = (info) => _log('revoked ${info.clientMsgId}');
+      eng.onTypingChanged = (status) {
+        _log('typing ${status.userId} ${status.typing}');
+      };
+      _listenUnread(eng);
+      eng.onConversationUpdated = () {};
       await eng.configureOpenIM(
         imApiAddr: _imApi.text.trim(),
         imWsAddr: _imWs.text.trim(),
@@ -181,16 +190,10 @@ class _ImDemoPageState extends State<ImDemoPage> {
   Future<void> _refreshConvs() async {
     try {
       final list = await _engine?.getConversations() ?? [];
+      if (!mounted) return;
       setState(() {
-        _conversations = list;
-        _convLines
-          ..clear()
-          ..addAll(
-            list.map(
-              (c) =>
-                  '${c.showName ?? c.conversationId}: ${c.latestText ?? ""} unread=${c.unreadCount}',
-            ),
-          );
+        _totalUnread = _engine?.totalUnread ?? _totalUnread;
+        _applyConversations(list);
       });
     } on UnimplementedError catch (e) {
       _log('conversations Unimplemented: $e');
@@ -199,11 +202,11 @@ class _ImDemoPageState extends State<ImDemoPage> {
     }
   }
 
-  Future<void> _totalUnread() async {
+  Future<void> _logUnread() async {
     final eng = _engine;
     if (eng == null) return;
     try {
-      final n = await eng.getTotalUnreadCount();
+      final n = eng.totalUnread;
       _log('unread total $n');
     } catch (e) {
       _log('unread error: $e');
@@ -268,8 +271,35 @@ class _ImDemoPageState extends State<ImDemoPage> {
     }
   }
 
+  void _listenUnread(SyImEngine engine) {
+    _unreadSub?.cancel();
+    _unreadSub = engine.unreadChanges.listen((update) {
+      if (!mounted) return;
+      setState(() {
+        _totalUnread = update.totalUnread;
+        _applyConversations(update.conversations);
+      });
+    });
+  }
+
+  void _applyConversations(List<SyImConversation> list) {
+    _conversations = list;
+    _convLines
+      ..clear()
+      ..addAll(
+        list.map((c) {
+          final pin = c.isPinned ? '[置顶] ' : '';
+          final draft = (c.draftText != null && c.draftText!.isNotEmpty)
+              ? ' [草稿]${c.draftText}'
+              : '';
+          return '$pin${c.showName ?? c.conversationId}: ${c.latestText ?? ""}$draft unread=${c.unreadCount}';
+        }),
+      );
+  }
+
   @override
   void dispose() {
+    _unreadSub?.cancel();
     _apiBase.dispose();
     _appId.dispose();
     _userId.dispose();
@@ -285,16 +315,35 @@ class _ImDemoPageState extends State<ImDemoPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('SY IM Example')),
+      appBar: AppBar(
+        title: Text('SY IM $syImSdkVersion'),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 16),
+            child: Row(
+              children: [
+                Badge(
+                  key: const Key('total-unread-badge'),
+                  isLabelVisible: _totalUnread > 0,
+                  label: Text('$_totalUnread'),
+                  child: const Icon(Icons.chat_bubble_outline),
+                ),
+                const SizedBox(width: 8),
+                Text('未读 $_totalUnread', key: const Key('total-unread-text')),
+              ],
+            ),
+          ),
+        ],
+      ),
       body: ListView(
         padding: const EdgeInsets.all(12),
         children: [
           Text(_status, style: const TextStyle(fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
-          const Text(
-            '依赖写 sy_im_flutter_sdk: ^0.4.3。先用 User JWT 换 IM Token，'
+          Text(
+            '依赖写 sy_im_flutter_sdk: ^$syImSdkVersion。先用 User JWT 换 IM Token，'
             '再用返回的 OpenIM 地址初始化并登录。',
-            style: TextStyle(fontSize: 12, color: Colors.black54),
+            style: const TextStyle(fontSize: 12, color: Colors.black54),
           ),
           _field('API Base', _apiBase),
           _field('AppId', _appId),
@@ -327,7 +376,7 @@ class _ImDemoPageState extends State<ImDemoPage> {
                 onPressed: _refreshConvs,
                 child: const Text('刷新会话'),
               ),
-              OutlinedButton(onPressed: _totalUnread, child: const Text('总未读')),
+              OutlinedButton(onPressed: _logUnread, child: const Text('总未读')),
               OutlinedButton(onPressed: _markRead, child: const Text('标记已读')),
               OutlinedButton(onPressed: _addFriend, child: const Text('好友申请')),
               OutlinedButton(

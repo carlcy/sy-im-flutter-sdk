@@ -1,6 +1,6 @@
 name: sy_im_flutter_sdk
 description: "SY IM Flutter SDK. Versioned pub.dev package over flutter_openim_sdk for login, messages, receipts, and groups."
-version: 0.4.3
+version: 0.5.0
 homepage: https://github.com/carlcy/sy-im-flutter-sdk
 repository: https://github.com/carlcy/sy-im-flutter-sdk
 issue_tracker: https://github.com/carlcy/sy-im-flutter-sdk/issues
