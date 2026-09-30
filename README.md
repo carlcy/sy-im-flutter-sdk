@@ -206,6 +206,15 @@ final members = await im.getGroupMembers(groupId: group.groupId);
 
 还有 `refuseFriendApplication`、`getFriends`、`joinGroup`、`kickGroupMembers`、`quitGroup`、`dismissGroup`、`getJoinedGroups`。
 
+## 表情回应与会话标签（控制面 lite）
+
+需要 `ImControlPlane.userJwt`。
+
+- `reactToMessage(fromUserId:, emoji:, toUserId: / groupId:, targetClientMsgId: / targetSeq:, add:)` → `POST /api/user/im/reaction`。服务端发一条 Custom(110)（`description` 为 `sy_reaction_lite`），对端在普通新消息里收到，用 `SyImReaction.parse(customData)` 解析。**不是** OpenIM 原生回应（OpenIM 3.x 开源版没有），服务端不做聚合计数。
+- 会话标签（每个用户自己的会话分组，存在 SY 服务端，与置顶无关）：`createConversationTag` / `listConversationTags` / `deleteConversationTag` / `addConversationsToTag` / `removeConversationsFromTag`。
+
+Android、iOS 同名同参。
+
 ## 错误码
 
 `ImControlPlane` 的请求失败时抛 `SyImControlPlaneException`（仍是 `Exception`）：`code` 为服务端业务码，`httpStatus` 为 HTTP 状态。取值在 `SyImErrorCode`，与 Android `ImErrorCode`、iOS `SyImErrorCode` 相同：

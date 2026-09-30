@@ -133,6 +133,99 @@ class ImControlPlane {
         'seq': seq,
       });
 
+  /// 对一条消息加 / 取消表情回应。`POST /api/user/im/reaction`。
+  ///
+  /// 服务端以 Custom(110) 消息发出（`data` 里 `sy=reaction_lite`），对端按普通自定义消息收到，
+  /// 用 [SyImReaction.parse] 解析。不是 OpenIM 原生回应接口，也没有服务端聚合计数。
+  /// 单聊传 [toUserId]，群聊传 [groupId]；目标消息用 [targetClientMsgId] 或 [targetSeq]。
+  Future<Map<String, dynamic>> reactToMessage({
+    required String fromUserId,
+    required String emoji,
+    String? toUserId,
+    String? groupId,
+    String? targetClientMsgId,
+    int targetSeq = 0,
+    String? targetSenderId,
+    bool add = true,
+  }) =>
+      _userPost(
+        '/api/user/im/reaction',
+        SyImReaction.requestBody(
+          appId: appId,
+          fromUserId: fromUserId,
+          emoji: emoji,
+          toUserId: toUserId,
+          groupId: groupId,
+          targetClientMsgId: targetClientMsgId,
+          targetSeq: targetSeq,
+          targetSenderId: targetSenderId,
+          add: add,
+        ),
+      );
+
+  /// 新建会话标签（每个用户自己的分组，存在 SY 服务端）。返回值含 `tag`。
+  Future<Map<String, dynamic>> createConversationTag({
+    required String ownerUserId,
+    required String name,
+    String color = '',
+    String remark = '',
+  }) =>
+      _userPost('/api/user/im/conversations/tags/create', {
+        'appId': appId,
+        'ownerUserId': ownerUserId,
+        'name': name,
+        'color': color,
+        'remark': remark,
+      });
+
+  /// 列出会话标签。`list` 每项含 `id` / `name` / `memberCount` / `members`。
+  Future<Map<String, dynamic>> listConversationTags({
+    required String ownerUserId,
+  }) =>
+      _userPost('/api/user/im/conversations/tags/list', {
+        'appId': appId,
+        'ownerUserId': ownerUserId,
+      });
+
+  /// 删除会话标签。
+  Future<Map<String, dynamic>> deleteConversationTag({
+    required String ownerUserId,
+    required int tagId,
+  }) =>
+      _userPost('/api/user/im/conversations/tags/delete', {
+        'appId': appId,
+        'ownerUserId': ownerUserId,
+        'tagId': tagId,
+      });
+
+  /// 把会话加入标签。
+  Future<Map<String, dynamic>> addConversationsToTag({
+    required String ownerUserId,
+    required int tagId,
+    required List<String> conversationIds,
+  }) =>
+      _userPost('/api/user/im/conversations/tags/members', {
+        'appId': appId,
+        'ownerUserId': ownerUserId,
+        'tagId': tagId,
+        'action': 'add',
+        'conversationIds': conversationIds,
+      });
+
+  /// 把会话移出标签。
+  Future<Map<String, dynamic>> removeConversationsFromTag({
+    required String ownerUserId,
+    required int tagId,
+    required List<String> conversationIds,
+  }) =>
+      _userPost('/api/user/im/conversations/tags/members', {
+        'appId': appId,
+        'ownerUserId': ownerUserId,
+        'tagId': tagId,
+        'action': 'remove',
+        'conversationIds': conversationIds,
+      });
+
   Future<Map<String, dynamic>> _userPost(
     String path,
     Map<String, dynamic> body,
@@ -254,4 +347,81 @@ class SyImControlPlaneException implements Exception {
   @override
   String toString() =>
       'SyImControlPlaneException($code, http $httpStatus): $message';
+}
+
+/// 表情回应（lite）。服务端 `POST /api/user/im/reaction` 发出的 Custom(110) 消息，`data` 为
+/// `{"sy":"reaction_lite","action":"add|remove","emoji":"👍","target":{"seq":..,"clientMsgId":..,"senderId":..}}`。
+/// 与 Android `ImReaction`、iOS `SyImReaction` 解析规则相同。
+class SyImReaction {
+  const SyImReaction({
+    required this.emoji,
+    required this.added,
+    required this.targetClientMsgId,
+    required this.targetSeq,
+    required this.targetSenderId,
+  });
+
+  static const String description = 'sy_reaction_lite';
+
+  final String emoji;
+  final bool added;
+  final String targetClientMsgId;
+  final int targetSeq;
+  final String targetSenderId;
+
+  /// 解析自定义消息的 `data` 字符串；不是回应消息时返回 null。
+  static SyImReaction? parse(String? customData) {
+    if (customData == null || customData.trim().isEmpty) return null;
+    Object? obj;
+    try {
+      obj = jsonDecode(customData);
+    } on FormatException {
+      return null;
+    }
+    if (obj is! Map || obj['sy'] != 'reaction_lite') return null;
+    final emoji = (obj['emoji']?.toString() ?? '').trim();
+    if (emoji.isEmpty) return null;
+    final target = obj['target'] is Map ? obj['target'] as Map : const {};
+    final seq = target['seq'];
+    return SyImReaction(
+      emoji: emoji,
+      added: obj['action'] != 'remove',
+      targetClientMsgId: target['clientMsgId']?.toString() ?? '',
+      targetSeq: seq is num ? seq.toInt() : 0,
+      targetSenderId: target['senderId']?.toString() ?? '',
+    );
+  }
+
+  /// `POST /api/user/im/reaction` 的请求体（与服务端 `ReactReq` 字段一致）。
+  static Map<String, dynamic> requestBody({
+    required String appId,
+    required String fromUserId,
+    required String emoji,
+    String? toUserId,
+    String? groupId,
+    String? targetClientMsgId,
+    int targetSeq = 0,
+    String? targetSenderId,
+    bool add = true,
+  }) {
+    final body = <String, dynamic>{
+      'appId': appId,
+      'fromUserId': fromUserId,
+      'emoji': emoji,
+      'action': add ? 'add' : 'remove',
+    };
+    if (groupId != null && groupId.isNotEmpty) {
+      body['groupId'] = groupId;
+    } else {
+      body['toUserId'] = toUserId ?? '';
+    }
+    if (targetClientMsgId != null && targetClientMsgId.isNotEmpty) {
+      body['targetClientMsgId'] = targetClientMsgId;
+    }
+    if (targetSeq > 0) body['targetSeq'] = targetSeq;
+    if (targetSenderId != null && targetSenderId.isNotEmpty) {
+      body['targetSenderId'] = targetSenderId;
+    }
+    return body;
+  }
 }
