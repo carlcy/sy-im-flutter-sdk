@@ -8,6 +8,7 @@
 - 正在输入：`SyImTypingStatus` 增加 `platformIds`（与 Android `ImTypingStatus`、iOS `SyImTypingStatus` 同字段），`SyImTypingStatus.fromOpenIm` 按平台列表判定 `typing`；新增与原生同名的 `sendTyping(conversationId:, focus:)`（等同 `setTyping`）。
 - 控制面失败改抛 `SyImControlPlaneException(code, httpStatus, message)`，业务码常量 `SyImErrorCode`（4003 / 4005 / 4006 / 4031–4033 / 4290 等）与 Android、iOS、服务端一致。此前只抛 `Exception(msg)`。
 - 控制面表情回应（lite）`reactToMessage` + `SyImReaction.parse`，会话标签 `createConversationTag` / `listConversationTags` / `deleteConversationTag` / `addConversationsToTag` / `removeConversationsFromTag`；三端同名。
+- 已读回执三端统一：`SyImReadReceipt` 增加 `conversationId`、`isGroup`，`userId` / `readTime` 改为非空（未知为空串 / 0）；新增统一名 `onRecvReadReceipts`。`SyImGroupReadInfo` 增加 `clientMsgId`、`source`；`getGroupMessageReadInfo(controlPlane:)` 用控制面 who-read 花名册补已读成员，`reportGroupMessagesRead` 写入花名册；`ImControlPlane.whoRead` / `reportGroupMessagesRead`；`SyImReadReceipts` 纯逻辑与原生同规则。
 - example/android：Gradle 堆调到 4G，修复 `flutter build apk` OOM。
 
 ## 0.4.3

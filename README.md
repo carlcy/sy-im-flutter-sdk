@@ -177,13 +177,26 @@ final read = await im.getGroupMessageReadInfo(
   conversationId: 'sg_group',
   clientMsgId: msgId,
 );
-// read.hasReadCount / read.unreadCount
-// read.readUserIds 在当前 OpenIM Flutter 绑定里为空
+// read.hasReadCount / read.unreadCount；OpenIM Flutter 绑定不给成员 id
+// 传 controlPlane（带 userJwt）时用控制面 who-read 花名册补 read.readUserIds，read.source == 'controlPlane'
+final withRoster = await im.getGroupMessageReadInfo(
+  conversationId: 'sg_group',
+  clientMsgId: msgId,
+  controlPlane: im.controlPlane(userJwt: userJwtFromYourServer),
+);
+// 成员读了群消息后上报 seq，花名册才有他（不是全员已读名单）
+await im.reportGroupMessagesRead(
+  controlPlane: im.controlPlane(userJwt: userJwtFromYourServer),
+  conversationId: 'sg_group',
+  seqs: [42],
+);
 
 await im.setSelfProfile(nickname: '阿花', ex: '{"level":1}');
 await im.setGroupCustomInfo(groupId: group.groupId, notification: '公告', ex: '{}');
 await im.addToBlacklist(userId: 'user_009');
 ```
+
+**已读回执（三端统一）。** `onRecvReadReceipts(List<SyImReadReceipt>)`，字段 `conversationId` / `userId`（已读方）/ `groupId`（单聊 null）/ `msgIds` / `readTime`（毫秒，未知 0），与 Android `ImReadReceipt`、iOS `SyImReadReceipt` 相同；旧名 `onRecvC2CReadReceipt` 保留。Flutter 只有单聊回执事件（flutter_openim_sdk 3.8.3 没有群回执监听），Android / iOS 另有群回执事件。`SyImGroupReadInfo` 三端同为 `clientMsgId` / `hasReadCount` / `unreadCount` / `readUserIds` / `source`（`openim` / `controlPlane` / `none`）。
 
 `@所有人` 使用 `syImAtAllUserId`。撤回回调是 `onMessageRevoked`，正在输入回调是 `onTypingChanged`（`SyImTypingStatus.typing` / `platformIds`，`platformIds` 为空即停止）。`sendTyping(conversationId:, focus:)` 是与 Android / iOS 同名的写法，等同 `setTyping`。
 

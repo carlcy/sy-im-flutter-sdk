@@ -107,6 +107,10 @@ class SyImEngine {
   void Function(String msgId, String fromUserId, String? groupId, String? text)?
       onRecvNewMessage;
   void Function(List<SyImReadReceipt> receipts)? onRecvC2CReadReceipt;
+
+  /// 已读回执（三端统一名）。Flutter 只有单聊：flutter_openim_sdk 3.8.3 没有群回执监听，
+  /// 群已读请用 [getGroupMessageReadInfo] 查询。与 [onRecvC2CReadReceipt] 同时回调。
+  void Function(List<SyImReadReceipt> receipts)? onRecvReadReceipts;
   void Function(SyImRevokedMessage info)? onMessageRevoked;
   void Function(SyImTypingStatus status)? onTypingChanged;
   void Function(SyImUnreadUpdate update)? onUnreadChanged;
@@ -150,8 +154,10 @@ class SyImEngine {
       onRecvNewMessage?.call(id, from, gid, text);
       unawaited(_syncUnreadFromSdk());
     };
-    adapter.onRecvC2CReadReceipt =
-        (receipts) => onRecvC2CReadReceipt?.call(receipts);
+    adapter.onRecvC2CReadReceipt = (receipts) {
+      onRecvC2CReadReceipt?.call(receipts);
+      onRecvReadReceipts?.call(receipts);
+    };
     adapter.onMessageRevoked = (info) => onMessageRevoked?.call(info);
     adapter.onTypingChanged = (status) => onTypingChanged?.call(status);
     adapter.onTotalUnreadChanged = (total) {
@@ -424,15 +430,51 @@ class SyImEngine {
   }) =>
       setTyping(conversationId: conversationId, typing: focus);
 
-  /// 群消息已读人数。当前 OpenIM Flutter 绑定只返回已读/未读计数，不含已读成员 id。
+  /// 群消息已读概况，三端同名同义。OpenIM Flutter 绑定只给人数；传入带 userJwt 的 [controlPlane] 时，
+  /// 再查控制面 who-read 花名册补已读成员（[SyImGroupReadInfo.source] == `controlPlane`）。
+  /// 花名册只含调用过 [reportGroupMessagesRead] 的成员；查询失败时退回只有人数。
   Future<SyImGroupReadInfo> getGroupMessageReadInfo({
     required String conversationId,
     required String clientMsgId,
-  }) {
-    return _requireLoggedIn().getGroupMessageReadInfo(
+    ImControlPlane? controlPlane,
+  }) async {
+    final a = _requireLoggedIn();
+    final info = await a.getGroupMessageReadInfo(
       conversationId: conversationId,
       clientMsgId: clientMsgId,
     );
+    final seq = a.lastGroupReadSeq;
+    final cp = controlPlane;
+    if (cp == null ||
+        (cp.userJwt ?? '').isEmpty ||
+        seq < 0 ||
+        info.readUserIds.isNotEmpty) {
+      return info;
+    }
+    List<String>? roster;
+    try {
+      roster = await cp.whoRead(conversationId: conversationId, seq: seq);
+    } catch (_) {
+      roster = null;
+    }
+    return SyImReadReceipts.merge(
+      clientMsgId: clientMsgId,
+      hasReadCount: info.hasReadCount,
+      unreadCount: info.unreadCount,
+      roster: roster,
+    );
+  }
+
+  /// 把本端已读的群消息 seq 写入控制面花名册（供其他成员的 [getGroupMessageReadInfo]）。
+  Future<void> reportGroupMessagesRead({
+    required ImControlPlane controlPlane,
+    required String conversationId,
+    required List<int> seqs,
+  }) async {
+    final uid = _currentUserId;
+    if (uid == null || uid.isEmpty) throw StateError('login required');
+    await controlPlane.reportGroupMessagesRead(
+        userId: uid, conversationId: conversationId, seqs: seqs);
   }
 
   Future<SyImUserProfile> getSelfProfile() {

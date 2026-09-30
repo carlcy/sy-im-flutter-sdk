@@ -17,6 +17,10 @@ class OpenIMAdapter {
   String imWsAddr;
 
   bool _inited = false;
+  String? _selfUserId;
+
+  /// [getGroupMessageReadInfo] 最近一次查到的消息 seq（没查到为 -1），供控制面 who-read 使用。
+  int lastGroupReadSeq = -1;
 
   void Function()? onConnectSuccess;
   void Function()? onConnecting;
@@ -91,12 +95,16 @@ class OpenIMAdapter {
               list
                   .map(
                     (r) => SyImReadReceipt(
-                      userId: r.userID,
-                      groupId: r.groupID,
+                      conversationId: SyImReadReceipts.singleConversationId(
+                        _selfUserId ?? '',
+                        r.userID ?? '',
+                      ),
+                      userId: r.userID ?? '',
+                      groupId: (r.groupID ?? '').isEmpty ? null : r.groupID,
                       msgIds: List<String>.from(
                         r.msgIDList ?? const <String>[],
                       ),
-                      readTime: r.readTime,
+                      readTime: r.readTime ?? 0,
                     ),
                   )
                   .toList(),
@@ -136,6 +144,7 @@ class OpenIMAdapter {
   Future<void> login({required String userId, required String token}) async {
     await _call('login', () async {
       await OpenIM.iMManager.login(userID: userId, token: token);
+      _selfUserId = userId;
     });
   }
 
@@ -143,6 +152,7 @@ class OpenIMAdapter {
   Future<void> logout() async {
     await _call('logout', () async {
       await OpenIM.iMManager.logout();
+      _selfUserId = null;
     });
   }
 
@@ -533,13 +543,17 @@ class OpenIMAdapter {
         for (final message in item.messageList ?? const <Message>[]) {
           if (message.clientMsgID != clientMsgId) continue;
           final info = message.attachedInfoElem?.groupHasReadInfo;
+          lastGroupReadSeq = message.seq ?? 0;
           return SyImGroupReadInfo(
+            clientMsgId: clientMsgId,
             hasReadCount: info?.hasReadCount ?? 0,
             unreadCount: info?.unreadCount ?? 0,
           );
         }
       }
-      return const SyImGroupReadInfo(hasReadCount: 0, unreadCount: 0);
+      lastGroupReadSeq = -1;
+      return SyImGroupReadInfo(
+          clientMsgId: clientMsgId, hasReadCount: 0, unreadCount: 0);
     });
   }
 
@@ -768,19 +782,145 @@ class SyImConversation {
   }
 }
 
-/// 单聊已读回执。
+/// 已读回执（单聊 + 群聊统一）。与 Android `ImReadReceipt`、iOS `SyImReadReceipt` 字段和语义相同：
+///
+/// - [conversationId]：OpenIM 会话 id（单聊 `si_<小 uid>_<大 uid>`，群 `sg_<groupId>`）；推导不出时为空串。
+/// - [userId]：已读方。[groupId]：群聊为群 id，单聊为 null。
+/// - [msgIds]：该已读方本次已读的客户端消息 id。[readTime]：毫秒，OpenIM 没给时为 0。
 class SyImReadReceipt {
   const SyImReadReceipt({
-    this.userId,
+    this.conversationId = '',
+    this.userId = '',
     this.groupId,
     this.msgIds = const [],
-    this.readTime,
+    this.readTime = 0,
   });
 
-  final String? userId;
+  final String conversationId;
+  final String userId;
   final String? groupId;
   final List<String> msgIds;
-  final int? readTime;
+  final int readTime;
+
+  bool get isGroup => (groupId ?? '').isNotEmpty;
+
+  @override
+  bool operator ==(Object other) =>
+      other is SyImReadReceipt &&
+      other.conversationId == conversationId &&
+      other.userId == userId &&
+      other.groupId == groupId &&
+      other.readTime == readTime &&
+      _listEq(other.msgIds, msgIds);
+
+  @override
+  int get hashCode => Object.hash(
+      conversationId, userId, groupId, readTime, Object.hashAll(msgIds));
+
+  @override
+  String toString() =>
+      'SyImReadReceipt($conversationId, $userId, $groupId, $msgIds, $readTime)';
+}
+
+bool _listEq(List<String> a, List<String> b) {
+  if (a.length != b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if (a[i] != b[i]) return false;
+  }
+  return true;
+}
+
+/// 已读回执的纯逻辑，三端规则相同（Android `ImReadReceipts`、iOS `SyImReadReceipts`）。
+class SyImReadReceipts {
+  SyImReadReceipts._();
+
+  static String singleConversationId(String a, String b) {
+    if (a.isEmpty || b.isEmpty) return '';
+    final ids = [a, b]..sort();
+    return 'si_${ids.join('_')}';
+  }
+
+  static String groupConversationId(String groupId) =>
+      groupId.isEmpty ? '' : 'sg_$groupId';
+
+  static String? groupIdOf(String conversationId) =>
+      conversationId.startsWith('sg_') && conversationId.length > 3
+          ? conversationId.substring(3)
+          : null;
+
+  /// 「每条消息 → 已读成员」转成「每个已读者 → 消息 id」，已读者按首次出现顺序。
+  static List<SyImReadReceipt> perReader(
+    String conversationId,
+    List<MapEntry<String, List<String>>> perMessage,
+  ) {
+    final byReader = <String, List<String>>{};
+    for (final e in perMessage) {
+      if (e.key.isEmpty) continue;
+      for (final r in e.value) {
+        if (r.isEmpty) continue;
+        final list = byReader.putIfAbsent(r, () => <String>[]);
+        if (!list.contains(e.key)) list.add(e.key);
+      }
+    }
+    final gid = groupIdOf(conversationId);
+    return byReader.entries
+        .map((e) => SyImReadReceipt(
+              conversationId: conversationId,
+              userId: e.key,
+              groupId: gid,
+              msgIds: e.value,
+            ))
+        .toList();
+  }
+
+  /// 控制面 `who-read` 的 `list[].readerUid` → 去重后的已读者（保持服务端顺序：最近已读在前）。
+  static List<String> readersFromWhoRead(List<dynamic> list) {
+    final out = <String>[];
+    for (final row in list) {
+      if (row is! Map) continue;
+      final uid = row['readerUid'];
+      if (uid is String && uid.isNotEmpty && !out.contains(uid)) out.add(uid);
+    }
+    return out;
+  }
+
+  /// OpenIM 有成员 id 就用 OpenIM；否则用控制面花名册（[roster] 为 null 表示没查）。
+  /// 花名册人数多于 OpenIM 人数时以花名册为准，未读相应减少（不小于 0）。
+  static SyImGroupReadInfo merge({
+    required String clientMsgId,
+    required int hasReadCount,
+    required int unreadCount,
+    List<String> openImReaders = const [],
+    List<String>? roster,
+  }) {
+    if (openImReaders.isNotEmpty) {
+      return SyImGroupReadInfo(
+        clientMsgId: clientMsgId,
+        hasReadCount: hasReadCount > openImReaders.length
+            ? hasReadCount
+            : openImReaders.length,
+        unreadCount: unreadCount,
+        readUserIds: openImReaders,
+        source: SyImGroupReadInfo.sourceOpenIm,
+      );
+    }
+    if (roster != null && roster.isNotEmpty) {
+      final read = hasReadCount > roster.length ? hasReadCount : roster.length;
+      final unread = unreadCount - (read - hasReadCount);
+      return SyImGroupReadInfo(
+        clientMsgId: clientMsgId,
+        hasReadCount: read,
+        unreadCount: unread < 0 ? 0 : unread,
+        readUserIds: roster,
+        source: SyImGroupReadInfo.sourceControlPlane,
+      );
+    }
+    return SyImGroupReadInfo(
+      clientMsgId: clientMsgId,
+      hasReadCount: hasReadCount,
+      unreadCount: unreadCount,
+    );
+  }
 }
 
 class SyImFriend {
@@ -896,18 +1036,27 @@ class SyImTypingStatus {
   final List<int> platformIds;
 }
 
-/// 群消息已读概况。`readUserIds` 在 flutter_openim_sdk 3.8.3+hotfix.15 中为空，
-/// 该版本的 [GroupHasReadInfo] 只有已读人数和未读人数。
+/// 群消息已读概况，三端相同。flutter_openim_sdk 3.8.3+hotfix.15 的 [GroupHasReadInfo] 只有人数，
+/// 已读成员来自控制面 who-read 花名册（[source] == `controlPlane`），否则为空（`none`）。
+/// 花名册只含调用过 `reportGroupMessagesRead` 的成员，不是全员已读名单。
 class SyImGroupReadInfo {
+  static const String sourceOpenIm = 'openim';
+  static const String sourceControlPlane = 'controlPlane';
+  static const String sourceNone = 'none';
+
   const SyImGroupReadInfo({
+    this.clientMsgId = '',
     required this.hasReadCount,
     required this.unreadCount,
     this.readUserIds = const [],
+    this.source = sourceNone,
   });
 
+  final String clientMsgId;
   final int hasReadCount;
   final int unreadCount;
   final List<String> readUserIds;
+  final String source;
 }
 
 class SyImUserProfile {

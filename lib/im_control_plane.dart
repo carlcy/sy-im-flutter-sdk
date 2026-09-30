@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import 'openim_adapter.dart' show SyImReadReceipts;
+
 /// SY IM 控制面 REST（非 OpenIM 原生 SDK）。
 ///
 /// - [getToken] → `/api/user/im/token` 或 `/api/server/im/token`
@@ -225,6 +227,42 @@ class ImControlPlane {
         'action': 'remove',
         'conversationIds': conversationIds,
       });
+
+  /// 控制面已读花名册。`POST /api/user/im/messages/who-read`，body `{appId, conversationId, seq}`。
+  /// 返回去重后的已读者（最近已读在前）。只含调用过 [reportGroupMessagesRead] 的成员。
+  Future<List<String>> whoRead({
+    required String conversationId,
+    int seq = 0,
+  }) async {
+    final data = await _userPost('/api/user/im/messages/who-read',
+        whoReadBody(appId, conversationId, seq));
+    final list = data['list'];
+    return SyImReadReceipts.readersFromWhoRead(list is List ? list : const []);
+  }
+
+  /// 把本端已读的群消息写入控制面花名册。`POST /api/user/im/conversations/mark-read`，
+  /// `mode=msgs` + `seqs`；服务端同时向 OpenIM 标记这些消息已读。
+  Future<Map<String, dynamic>> reportGroupMessagesRead({
+    required String userId,
+    required String conversationId,
+    required List<int> seqs,
+  }) =>
+      _userPost('/api/user/im/conversations/mark-read', {
+        'appId': appId,
+        'userId': userId,
+        'conversationId': conversationId,
+        'mode': 'msgs',
+        'seqs': seqs.where((s) => s > 0).toList(),
+      });
+
+  /// who-read 请求体（与服务端 `WhoReadReq` 一致）。
+  static Map<String, dynamic> whoReadBody(
+          String appId, String conversationId, int seq) =>
+      {
+        'appId': appId,
+        'conversationId': conversationId,
+        if (seq > 0) 'seq': seq,
+      };
 
   Future<Map<String, dynamic>> _userPost(
     String path,
