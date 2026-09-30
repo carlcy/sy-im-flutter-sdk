@@ -1,8 +1,9 @@
 name: sy_im_flutter_sdk
-description: "SY IM Flutter SDK — Dart OpenIMAdapter over flutter_openim_sdk (no legacy MethodChannel shell)."
-version: 0.4.2
+description: "SY IM Flutter SDK. Versioned pub.dev package over flutter_openim_sdk for login, messages, receipts, and groups."
+version: 0.5.0
 homepage: https://github.com/carlcy/sy-im-flutter-sdk
 repository: https://github.com/carlcy/sy-im-flutter-sdk
+issue_tracker: https://github.com/carlcy/sy-im-flutter-sdk/issues
 
 environment:
   sdk: ^3.6.2
@@ -12,7 +13,9 @@ dependencies:
   http: ^1.2.0
   flutter:
     sdk: flutter
-  # Production dependency: pub.dev flutter_openim_sdk
+  # Production dependency: pub.dev flutter_openim_sdk.
+  # Native OpenIM is pulled by that plugin's coordinates
+  # (Maven io.openim:core-sdk, CocoaPods OpenIMSDKCore), not by a zip.
   flutter_openim_sdk: ^3.8.3+hotfix.15
 
 dev_dependencies:

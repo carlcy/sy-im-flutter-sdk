@@ -7,7 +7,8 @@ import 'package:http/http.dart' as http;
 /// - [getToken] → `/api/user/im/token` 或 `/api/server/im/token`
 /// - friends / groups / send / history / revoke → `/api/user/im/*`
 ///
-/// 实时收发请用 [OpenIMAdapter] / `flutter_openim_sdk`。不宣称腾讯云 TIM 全对等。
+/// 已读、总未读、好友申请同意/拒绝、群成员管理走登录后的 OpenIM 实时接口
+/// （[OpenIMAdapter]）。本类只覆盖控制面 REST，原有路径保持不变。
 class ImControlPlane {
   ImControlPlane({
     required this.apiBaseUrl,
@@ -158,7 +159,8 @@ class ImControlPlane {
       throw Exception('unexpected response');
     }
     final m = Map<String, dynamic>.from(map);
-    final code = m['code'] as int? ?? (res.statusCode >= 200 && res.statusCode < 300 ? 0 : -1);
+    final code = m['code'] as int? ??
+        (res.statusCode >= 200 && res.statusCode < 300 ? 0 : -1);
     if (res.statusCode < 200 || res.statusCode >= 300 || code != 0) {
       throw Exception(m['msg'] ?? 'HTTP ${res.statusCode}');
     }

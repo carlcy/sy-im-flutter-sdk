@@ -1,19 +1,25 @@
 # SY IM Flutter Example
 
-对接本地 Go 后端 `:8080` + 官方 `flutter_openim_sdk`（path 依赖）。
+这个示例演示客户接入方式：在 `pubspec.yaml` 声明 SDK，用 User JWT 换 IM Token，再初始化、登录、发文本、收消息。
 
-| | iOS 模拟器 | Android 模拟器 | 真机 |
-|--|-----------|----------------|------|
-| API | `http://127.0.0.1:8080` | `http://10.0.2.2:8080` | 局域网 IP |
-| IM Token | `POST /api/user/im/token`（Bearer User JWT） | 同左 | 同左 |
+客户项目写：
 
-返回 `{ token, imApiAddr, imWsAddr }` 后：初始化 OpenIM → 登录 → 发文本 → 会话列表 stub。
-
-```bash
-cd ../../rtc-backend-go && make run
-cd ../sy_im_flutter_sdk/example
-flutter pub get
-flutter run
+```yaml
+dependencies:
+  sy_im_flutter_sdk: ^0.5.0
 ```
 
-OpenIM 仅在 API 缺失时抛 `UnimplementedError`。模拟器可测登录 UI；真实收发需 OpenIM 服务可达。
+本 example 为本地开发保留 `path: ../`，不要把 path 或 zip 解压路径交给客户。
+
+```bash
+cd example
+flutter pub get
+flutter run --dart-define=SY_API_BASE=https://syrtcapi.shengyuchenyao.cn
+```
+
+1. 粘贴 User JWT
+2. 获取 IM Token（SDK 调 `POST /api/user/im/token`）
+3. 初始化 → 登录 → 发送文本
+4. 可选：总未读、标记已读、好友申请、建群
+
+OpenIM API / WS 使用 Token 响应里的 `imApiAddr`、`imWsAddr`。
