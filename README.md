@@ -206,6 +206,31 @@ final members = await im.getGroupMembers(groupId: group.groupId);
 
 还有 `refuseFriendApplication`、`getFriends`、`joinGroup`、`kickGroupMembers`、`quitGroup`、`dismissGroup`、`getJoinedGroups`。
 
+## 错误码
+
+`ImControlPlane` 的请求失败时抛 `SyImControlPlaneException`（仍是 `Exception`）：`code` 为服务端业务码，`httpStatus` 为 HTTP 状态。取值在 `SyImErrorCode`，与 Android `ImErrorCode`、iOS `SyImErrorCode` 相同：
+
+| code | 常量 | 含义 |
+|---|---|---|
+| 401 / 403 | `unauthorized` / `forbidden` | JWT 无效 / 无权访问该应用 |
+| 3001 | `imNotEnabled` | 应用未开通 IM |
+| 3003 / 3004 | `quotaMau` / `quotaMessages` | 月活 / 消息量超出套餐 |
+| 4003 | `trialRetired` | 体验版已下线 |
+| 4005 | `sensitiveRejected` | 敏感词拦截 |
+| 4006 | `contentRejected` | 发送前内容审核拒绝或审核服务不可达 |
+| 4031 / 4032 / 4033 | `credentialSuspended` / `Revoked` / `Expired` | AppId 访问凭证暂停 / 吊销 / 过期 |
+| 4290 | `rateLimited` | 请求过于频繁 |
+
+```dart
+try {
+  await controlPlane.getToken(userId);
+} on SyImControlPlaneException catch (e) {
+  if (e.isCredentialBlocked) { /* 凭证不可用 */ }
+}
+```
+
+OpenIM 实时接口（登录、收发）的错误仍是 OpenIM 错误码。
+
 ## 跑本仓库示例
 
 ```bash

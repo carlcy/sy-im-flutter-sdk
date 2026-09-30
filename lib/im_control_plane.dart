@@ -153,20 +153,105 @@ class ImControlPlane {
     return _decode(res);
   }
 
-  Map<String, dynamic> _decode(http.Response res) {
-    final map = jsonDecode(res.body.isEmpty ? '{}' : res.body);
-    if (map is! Map) {
-      throw Exception('unexpected response');
-    }
-    final m = Map<String, dynamic>.from(map);
-    final code = m['code'] as int? ??
-        (res.statusCode >= 200 && res.statusCode < 300 ? 0 : -1);
-    if (res.statusCode < 200 || res.statusCode >= 300 || code != 0) {
-      throw Exception(m['msg'] ?? 'HTTP ${res.statusCode}');
-    }
-    final data = m['data'];
-    if (data is Map) return Map<String, dynamic>.from(data);
-    if (data == null) return <String, dynamic>{};
-    return <String, dynamic>{'value': data};
+  Map<String, dynamic> _decode(http.Response res) =>
+      decodeControlPlaneResponse(res.statusCode, res.body);
+}
+
+/// 解析控制面响应。非 2xx 或业务码非 0 时抛 [SyImControlPlaneException]。
+Map<String, dynamic> decodeControlPlaneResponse(int httpStatus, String body) {
+  Object? parsed;
+  try {
+    parsed = jsonDecode(body.isEmpty ? '{}' : body);
+  } on FormatException {
+    parsed = null;
   }
+  final ok = httpStatus >= 200 && httpStatus < 300;
+  if (parsed is! Map) {
+    if (ok) {
+      throw SyImControlPlaneException(-1, httpStatus, 'unexpected response');
+    }
+    throw SyImControlPlaneException(httpStatus, httpStatus, 'HTTP $httpStatus');
+  }
+  final m = Map<String, dynamic>.from(parsed);
+  final rawCode = m['code'];
+  final code = rawCode is num ? rawCode.toInt() : (ok ? 0 : httpStatus);
+  if (!ok || code != 0) {
+    final msg = m['msg']?.toString();
+    throw SyImControlPlaneException(code, httpStatus,
+        (msg == null || msg.isEmpty) ? 'HTTP $httpStatus' : msg);
+  }
+  final data = m['data'];
+  if (data is Map) return Map<String, dynamic>.from(data);
+  if (data == null) return <String, dynamic>{};
+  return <String, dynamic>{'value': data};
+}
+
+/// SY 控制面（`/api/user/im/*`、`/api/server/im/token`）返回的业务码。
+///
+/// 与 Android `ImErrorCode`、iOS `SyImErrorCode` 取值相同，与服务端 `errcode` 包一致。
+/// OpenIM SDK 自己的错误码（登录、实时收发）不在此列，原样透传。
+class SyImErrorCode {
+  SyImErrorCode._();
+
+  /// 未登录或 User JWT 无效。
+  static const int unauthorized = 401;
+
+  /// 无权访问该应用。
+  static const int forbidden = 403;
+
+  /// 应用未开通 IM。
+  static const int imNotEnabled = 3001;
+
+  /// 月活超出套餐。
+  static const int quotaMau = 3003;
+
+  /// 消息量超出套餐。
+  static const int quotaMessages = 3004;
+
+  /// 体验版已下线。
+  static const int trialRetired = 4003;
+
+  /// 敏感词拦截（拒绝模式）。
+  static const int sensitiveRejected = 4005;
+
+  /// 发送前内容审核拒绝，或审核服务不可达（阻断模式）。
+  static const int contentRejected = 4006;
+
+  /// AppId 的访问凭证已暂停。
+  static const int credentialSuspended = 4031;
+
+  /// AppId 的访问凭证已吊销。
+  static const int credentialRevoked = 4032;
+
+  /// AppId 的访问凭证已过期。
+  static const int credentialExpired = 4033;
+
+  /// 请求过于频繁。
+  static const int rateLimited = 4290;
+
+  static bool isCredentialBlocked(int code) =>
+      code == credentialSuspended ||
+      code == credentialRevoked ||
+      code == credentialExpired;
+
+  /// 消息被内容策略拦截（敏感词或发送前审核）。
+  static bool isContentRejected(int code) =>
+      code == sensitiveRejected || code == contentRejected;
+}
+
+/// 控制面请求失败。[code] 为响应体业务码（见 [SyImErrorCode]），响应体没有 code 时为 HTTP 状态码。
+/// 仍是 [Exception]，已有的 `on Exception` 可以接住。
+class SyImControlPlaneException implements Exception {
+  SyImControlPlaneException(this.code, this.httpStatus, this.message);
+
+  final int code;
+  final int httpStatus;
+  final String message;
+
+  bool get isCredentialBlocked => SyImErrorCode.isCredentialBlocked(code);
+  bool get isContentRejected => SyImErrorCode.isContentRejected(code);
+
+  @override
+  String toString() =>
+      'SyImControlPlaneException($code, http $httpStatus): $message';
 }

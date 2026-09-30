@@ -6,6 +6,8 @@
 - 未读实时更新：`unreadChanges` / `onUnreadChanged` 同时带总未读和各会话未读，来源是 OpenIM 的 `onTotalUnreadMessageCountChanged`、会话变更和新消息；`markConversationAsRead` 返回前会先把本地未读清零并再向 SDK 拉一次。
 - 补充腾讯云 IM 常见能力里 OpenIM 已支持的部分：消息撤回、@ 文本、本地消息搜索、会话置顶 / 草稿 / 免打扰、正在输入、自定义消息、用户与群自定义资料、黑名单。群已读目前只能拿到已读人数和未读人数，这一版 OpenIM Flutter 绑定没有已读成员 id 列表。
 - 正在输入：`SyImTypingStatus` 增加 `platformIds`（与 Android `ImTypingStatus`、iOS `SyImTypingStatus` 同字段），`SyImTypingStatus.fromOpenIm` 按平台列表判定 `typing`；新增与原生同名的 `sendTyping(conversationId:, focus:)`（等同 `setTyping`）。
+- 控制面失败改抛 `SyImControlPlaneException(code, httpStatus, message)`，业务码常量 `SyImErrorCode`（4003 / 4005 / 4006 / 4031–4033 / 4290 等）与 Android、iOS、服务端一致。此前只抛 `Exception(msg)`。
+- example/android：Gradle 堆调到 4G，修复 `flutter build apk` OOM。
 
 ## 0.4.3
 
