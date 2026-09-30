@@ -406,6 +406,7 @@ class SyImEngine {
     );
   }
 
+  /// 发送正在输入（OpenIM `changeInputStates`）。对端回调 [onTypingChanged]。
   Future<void> setTyping({
     required String conversationId,
     required bool typing,
@@ -415,6 +416,13 @@ class SyImEngine {
       typing: typing,
     );
   }
+
+  /// 与 Android / iOS `sendTyping(conversationId, focus)` 同名，等同 [setTyping]。
+  Future<void> sendTyping({
+    required String conversationId,
+    required bool focus,
+  }) =>
+      setTyping(conversationId: conversationId, typing: focus);
 
   /// 群消息已读人数。当前 OpenIM Flutter 绑定只返回已读/未读计数，不含已读成员 id。
   Future<SyImGroupReadInfo> getGroupMessageReadInfo({

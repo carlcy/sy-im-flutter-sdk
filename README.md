@@ -185,7 +185,7 @@ await im.setGroupCustomInfo(groupId: group.groupId, notification: '公告', ex: 
 await im.addToBlacklist(userId: 'user_009');
 ```
 
-`@所有人` 使用 `syImAtAllUserId`。撤回回调是 `onMessageRevoked`，正在输入回调是 `onTypingChanged`。
+`@所有人` 使用 `syImAtAllUserId`。撤回回调是 `onMessageRevoked`，正在输入回调是 `onTypingChanged`（`SyImTypingStatus.typing` / `platformIds`，`platformIds` 为空即停止）。`sendTyping(conversationId:, focus:)` 是与 Android / iOS 同名的写法，等同 `setTyping`。
 
 ## 好友申请与群
 

@@ -119,10 +119,10 @@ class OpenIMAdapter {
           },
           onInputStatusChanged: (data) {
             onTypingChanged?.call(
-              SyImTypingStatus(
+              SyImTypingStatus.fromOpenIm(
                 userId: data.userID,
                 conversationId: data.conversationID,
-                typing: data.platformIDs?.isNotEmpty ?? false,
+                platformIds: data.platformIDs,
               ),
             );
           },
@@ -864,16 +864,36 @@ class SyImSearchHit {
   final String? text;
 }
 
+/// 对方输入状态。字段与 Android `ImTypingStatus`、iOS `SyImTypingStatus` 相同。
+///
+/// OpenIM 推的是对方正在输入的端（[platformIds]）；为空即停止输入，[typing] 为 false。
 class SyImTypingStatus {
   const SyImTypingStatus({
     required this.userId,
     required this.conversationId,
     required this.typing,
+    this.platformIds = const [],
   });
+
+  /// 按 OpenIM `InputStatusChangedData` 字段构造。
+  factory SyImTypingStatus.fromOpenIm({
+    String? userId,
+    String? conversationId,
+    List<int>? platformIds,
+  }) {
+    final platforms = List<int>.unmodifiable(platformIds ?? const <int>[]);
+    return SyImTypingStatus(
+      userId: userId ?? '',
+      conversationId: conversationId ?? '',
+      typing: platforms.isNotEmpty,
+      platformIds: platforms,
+    );
+  }
 
   final String userId;
   final String conversationId;
   final bool typing;
+  final List<int> platformIds;
 }
 
 /// 群消息已读概况。`readUserIds` 在 flutter_openim_sdk 3.8.3+hotfix.15 中为空，
