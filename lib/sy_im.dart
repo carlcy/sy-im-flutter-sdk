@@ -9,6 +9,7 @@ library;
 export 'openim_adapter.dart';
 export 'im_control_plane.dart';
 export 'sy_im_unread.dart';
+export 'sy_im_group_read.dart';
 
 import 'dart:async';
 import 'dart:io';
@@ -16,6 +17,7 @@ import 'dart:io';
 import 'openim_adapter.dart';
 import 'im_control_plane.dart';
 import 'sy_im_unread.dart';
+import 'sy_im_group_read.dart';
 
 /// 与 Android / iOS IM SDK 对齐的版本号。
 const String syImSdkVersion = '0.5.0';
@@ -108,9 +110,15 @@ class SyImEngine {
       onRecvNewMessage;
   void Function(List<SyImReadReceipt> receipts)? onRecvC2CReadReceipt;
 
-  /// 已读回执（三端统一名）。Flutter 只有单聊：flutter_openim_sdk 3.8.3 没有群回执监听，
-  /// 群已读请用 [getGroupMessageReadInfo] 查询。与 [onRecvC2CReadReceipt] 同时回调。
+  /// 已读回执（三端统一名）。单聊来自 OpenIM 推送；群聊来自 [watchGroupReadReceipts]
+  /// 发现的新已读者（需要控制面花名册才有成员 id）。与 [onRecvC2CReadReceipt] 同时回调。
   void Function(List<SyImReadReceipt> receipts)? onRecvReadReceipts;
+
+  /// 群已读回执，与 Android `onRecvGroupReadReceipt(conversationId)`、
+  /// iOS `onRecvGroupReadReceipt(groupId, msgIds)` 对应：被关注的群消息已读人数增加或出现新已读者时回调。
+  /// flutter_openim_sdk 3.8.3 没有群回执推送，所以只覆盖 [watchGroupReadReceipts] 关注的消息。
+  SyImGroupReadReceiptCallback? onRecvGroupReadReceipt;
+  final List<SyImGroupReadWatch> _groupReadWatches = [];
   void Function(SyImRevokedMessage info)? onMessageRevoked;
   void Function(SyImTypingStatus status)? onTypingChanged;
   void Function(SyImUnreadUpdate update)? onUnreadChanged;
@@ -165,6 +173,7 @@ class SyImEngine {
     };
     adapter.onConversationsChanged = (conversations) {
       _publishUnread(() => _unread.applyDelta(conversations));
+      _checkGroupReadWatches(conversations.map((c) => c.conversationId));
     };
     adapter.onConversationUpdated = () => onConversationUpdated?.call();
     await adapter.initSdk(dataDir: dir);
@@ -186,6 +195,9 @@ class SyImEngine {
   }
 
   Future<void> logout() async {
+    for (final w in List<SyImGroupReadWatch>.from(_groupReadWatches)) {
+      w.cancel();
+    }
     await _adapter?.logout();
     _loggedIn = false;
     _currentUserId = null;
@@ -463,6 +475,43 @@ class SyImEngine {
       unreadCount: info.unreadCount,
       roster: roster,
     );
+  }
+
+  /// 关注一个群会话里的消息（通常是自己发的），已读变化时回调 [onRecvGroupReadReceipt]，
+  /// 有新已读者时再回调 [onRecvReadReceipts]。会话变化时立即检查，另按 [interval] 兜底轮询
+  /// （`Duration.zero` 关闭轮询）。首次检查只记基线，不回调。不用时调用 [SyImGroupReadWatch.cancel]，
+  /// [logout] 会全部取消。
+  SyImGroupReadWatch watchGroupReadReceipts({
+    required String conversationId,
+    required List<String> clientMsgIds,
+    ImControlPlane? controlPlane,
+    Duration interval = const Duration(seconds: 5),
+  }) {
+    _requireLoggedIn();
+    late final SyImGroupReadWatch watch;
+    watch = SyImGroupReadWatch(
+      conversationId: conversationId,
+      clientMsgIds: clientMsgIds,
+      interval: interval,
+      fetch: (cid, mid) => getGroupMessageReadInfo(
+          conversationId: cid, clientMsgId: mid, controlPlane: controlPlane),
+      onChange: (w, changed, receipts) {
+        onRecvGroupReadReceipt?.call(
+            w.conversationId, SyImReadReceipts.groupIdOf(w.conversationId), changed);
+        if (receipts.isNotEmpty) onRecvReadReceipts?.call(receipts);
+      },
+      onCancel: _groupReadWatches.remove,
+    );
+    _groupReadWatches.add(watch);
+    unawaited(watch.check());
+    return watch;
+  }
+
+  void _checkGroupReadWatches(Iterable<String> conversationIds) {
+    final ids = conversationIds.toSet();
+    for (final w in List<SyImGroupReadWatch>.from(_groupReadWatches)) {
+      if (ids.contains(w.conversationId)) unawaited(w.check());
+    }
   }
 
   /// 把本端已读的群消息 seq 写入控制面花名册（供其他成员的 [getGroupMessageReadInfo]）。

@@ -196,7 +196,7 @@ await im.setGroupCustomInfo(groupId: group.groupId, notification: '公告', ex: 
 await im.addToBlacklist(userId: 'user_009');
 ```
 
-**已读回执（三端统一）。** `onRecvReadReceipts(List<SyImReadReceipt>)`，字段 `conversationId` / `userId`（已读方）/ `groupId`（单聊 null）/ `msgIds` / `readTime`（毫秒，未知 0），与 Android `ImReadReceipt`、iOS `SyImReadReceipt` 相同；旧名 `onRecvC2CReadReceipt` 保留。Flutter 只有单聊回执事件（flutter_openim_sdk 3.8.3 没有群回执监听），Android / iOS 另有群回执事件。`SyImGroupReadInfo` 三端同为 `clientMsgId` / `hasReadCount` / `unreadCount` / `readUserIds` / `source`（`openim` / `controlPlane` / `none`）。
+**已读回执（三端统一）。** `onRecvReadReceipts(List<SyImReadReceipt>)`，字段 `conversationId` / `userId`（已读方）/ `groupId`（单聊 null）/ `msgIds` / `readTime`（毫秒，未知 0），与 Android `ImReadReceipt`、iOS `SyImReadReceipt` 相同；旧名 `onRecvC2CReadReceipt` 保留。群回执事件 `onRecvGroupReadReceipt(conversationId, groupId, msgIds)` 对应 Android / iOS 的 `onRecvGroupReadReceipt`。flutter_openim_sdk 3.8.3 没有群回执推送，所以 Flutter 只覆盖 `watchGroupReadReceipts(conversationId:, clientMsgIds:, controlPlane:)` 关注的消息：会话变化时立即检查，另每 5 秒兜底轮询，已读人数增加或出现新已读者时回调（首次检查只记基线）；传 `controlPlane` 时新已读者再走 `onRecvReadReceipts`。用完调用 `cancel()`，`logout()` 会全部取消。`SyImGroupReadInfo` 三端同为 `clientMsgId` / `hasReadCount` / `unreadCount` / `readUserIds` / `source`（`openim` / `controlPlane` / `none`）。
 
 `@所有人` 使用 `syImAtAllUserId`。撤回回调是 `onMessageRevoked`，正在输入回调是 `onTypingChanged`（`SyImTypingStatus.typing` / `platformIds`，`platformIds` 为空即停止）。`sendTyping(conversationId:, focus:)` 是与 Android / iOS 同名的写法，等同 `setTyping`。
 
