@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.5.1
+
+- 版本与 Android / iOS IM SDK 统一为 `0.5.1`。客户依赖写 `sy_im_flutter_sdk: ^0.5.1`。
 
 - 群已读回执事件 `onRecvGroupReadReceipt(conversationId, groupId, msgIds)`，对应 Android / iOS 的 `onRecvGroupReadReceipt`。flutter_openim_sdk 没有群回执推送，由 `watchGroupReadReceipts` 关注指定消息（会话变化即查 + 5 秒兜底轮询），有新已读者时同时走 `onRecvReadReceipts`。
 

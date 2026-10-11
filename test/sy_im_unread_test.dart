@@ -2,8 +2,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sy_im_flutter_sdk/sy_im.dart';
 
 void main() {
-  test('sdk version is 0.5.0', () {
-    expect(syImSdkVersion, '0.5.0');
+  test('sdk version is 0.5.1', () {
+    expect(syImSdkVersion, '0.5.1');
     expect(syImAtAllUserId, 'AtAllTag');
     expect(SyImRecvOpt.notReceive, 1);
   });

@@ -2,23 +2,23 @@
 
 SY IM Flutter SDK。在 Dart 里封装 [flutter_openim_sdk](https://pub.dev/packages/flutter_openim_sdk)，客户按 **pub.dev 版本号** 接入。
 
-**当前版本：0.5.0**
+**当前版本：0.5.1**
 
 客户在自己的 `pubspec.yaml` 里写下面这一行，然后执行 `flutter pub get`。不要下载、解压 `sy-im-flutter-*.zip`。
 
 ```yaml
 dependencies:
-  sy_im_flutter_sdk: ^0.5.0
+  sy_im_flutter_sdk: ^0.5.1
 ```
 
-暂时不能访问 pub.dev 时，用打过 tag 的 Git 依赖（tag 与版本号一致，例如 `v0.5.0`）：
+暂时不能访问 pub.dev 时，用打过 tag 的 Git 依赖（tag 与版本号一致，例如 `v0.5.1`）：
 
 ```yaml
 dependencies:
   sy_im_flutter_sdk:
     git:
       url: https://github.com/carlcy/sy-im-flutter-sdk.git
-      ref: v0.5.0
+      ref: v0.5.1
 ```
 
 本仓库的 `example/` 为了本地改 SDK 后直接运行，使用 `path: ../`。这只给本仓库开发用，客户不要复制。
@@ -31,7 +31,7 @@ dependencies:
 
 ```yaml
 dependencies:
-  sy_im_flutter_sdk: ^0.5.0
+  sy_im_flutter_sdk: ^0.5.1
   path_provider: ^2.1.5
 ```
 
@@ -278,7 +278,7 @@ flutter run --dart-define=SY_API_BASE=https://syrtcapi.shengyuchenyao.cn
 
 ## 发布到 pub.dev（维护者）
 
-客户能写 `sy_im_flutter_sdk: ^0.5.0` 之前，维护者需要把这个版本发到 pub.dev。代理不会代替你登录 pub.dev。
+客户能写 `sy_im_flutter_sdk: ^0.5.1` 之前，维护者需要把这个版本发到 pub.dev。代理不会代替你登录 pub.dev。
 
 1. 把 `pubspec.yaml` 的 `version`、`CHANGELOG.md`、`VERSION`、本 README 里的 `^x.y.z` 改成同一个版本。
 2. 在包根目录执行，确认没有 error：
@@ -302,11 +302,11 @@ dart pub publish
 5. 打同名 tag，给 Git 依赖用：
 
 ```bash
-git tag v0.5.0
-git push origin v0.5.0
+git tag v0.5.1
+git push origin v0.5.1
 ```
 
-6. 不要再上传 `sy-im-flutter-0.4.2.zip` 这类压缩包给客户。集成方式只有上面的 pub.dev 行，或 `ref: v0.5.0` 的 Git 依赖。
+6. 不要再上传 `sy-im-flutter-0.4.2.zip` 这类压缩包给客户。集成方式只有上面的 pub.dev 行，或 `ref: v0.5.1` 的 Git 依赖。
 
 首次发布会占用包名 `sy_im_flutter_sdk`。之后每次发版都要升版本号，pub.dev 不允许覆盖已发布版本。
 

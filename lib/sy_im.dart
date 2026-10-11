@@ -20,7 +20,7 @@ import 'sy_im_unread.dart';
 import 'sy_im_group_read.dart';
 
 /// 与 Android / iOS IM SDK 对齐的版本号。
-const String syImSdkVersion = '0.5.0';
+const String syImSdkVersion = '0.5.1';
 
 /// `@所有人` 时放进 [SyImEngine.sendAtTextMessage] 的 `atUserIds`。
 const String syImAtAllUserId = 'AtAllTag';
